@@ -59,4 +59,8 @@ ai-chat-anchor/
 
 ## License
 
-暂未指定。
+本项目采用 [PolyForm Noncommercial 1.0.0](/Users/niallyoung/Desktop/pipeline/LICENSE) 许可。
+
+你可以出于非商业目的使用、学习、修改和分发本项目；如需商用，请先取得作者授权。
+
+说明：这类“禁止商用”许可通常不属于 OSI 定义下的开源许可证，但很适合“源码公开、个人和非商业可用、商业使用需单独授权”的场景。
