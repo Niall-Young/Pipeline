@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Pipeline</title>
+  <style>
+    :root {
+      --anchor-radius: 18px;
+      --anchor-bg: #ffffff;
+      --anchor-bg-2: #ffffff;
+      --anchor-bg-3: rgba(0, 0, 0, 0.04);
+      --anchor-text: #09090b;
+      --anchor-text-2: #71717a;
+      --anchor-border: #e4e4e7;
+      --anchor-accent: #18181b;
+      --anchor-accent-text: #fafafa;
+      --anchor-font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --anchor-bg: #09090b;
+        --anchor-bg-2: #09090b;
+        --anchor-bg-3: rgba(255, 255, 255, 0.08);
+        --anchor-text: #fafafa;
+        --anchor-text-2: #a1a1aa;
+        --anchor-border: #27272a;
+        --anchor-accent: #fafafa;
+        --anchor-accent-text: #09090b;
+      }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      background: transparent;
+    }
+
+    body {
+      width: 360px;
+      min-height: 260px;
+      background: var(--anchor-bg);
+      color: var(--anchor-text);
+      font: 13px/1.5 var(--anchor-font);
+      border-radius: var(--anchor-radius);
+      overflow: hidden;
+    }
+
+    .popup-shell {
+      display: flex;
+      flex-direction: column;
+      min-height: 260px;
+      border-radius: inherit;
+      background: var(--anchor-bg);
+      border: 1px solid var(--anchor-border);
+      isolation: isolate;
+    }
+
+    .parallel-area {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 14px 16px;
+      background: var(--anchor-bg-2);
+    }
+
+    .parallel-area-header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .parallel-area-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--anchor-text);
+    }
+
+    .parallel-area-hint {
+      font-size: 11px;
+      color: var(--anchor-text-2);
+    }
+
+    .platform-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 16px;
+      border-top: 1px solid var(--anchor-border);
+      border-bottom: 1px solid var(--anchor-border);
+      background: var(--anchor-bg);
+    }
+
+    .platform-label {
+      font-size: 12px;
+      color: var(--anchor-text-2);
+    }
+
+    .platform-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--anchor-text-2);
+      flex-shrink: 0;
+    }
+
+    .platform-dot.active {
+      background: #22c55e;
+    }
+
+    .platform-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--anchor-text);
+    }
+
+    .composer {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      gap: 12px;
+      padding: 14px 16px 16px;
+      background: var(--anchor-bg-2);
+    }
+
+    #main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: var(--anchor-bg-2);
+    }
+
+    .composer.parallel-enabled .parallel-area-input,
+    .composer.parallel-enabled .parallel-area-actions {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .parallel-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--anchor-border);
+      border-radius: 10px;
+      background: var(--anchor-bg);
+      color: var(--anchor-text);
+      font: inherit;
+      cursor: pointer;
+      transition:
+        border-color 0.18s ease,
+        background 0.18s ease,
+        transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 0.22s ease;
+    }
+
+    .parallel-toggle:hover {
+      background: var(--anchor-bg-3);
+    }
+
+    .parallel-toggle.active {
+      border-color: var(--anchor-text);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+    }
+
+    .parallel-toggle.animating-on,
+    .parallel-toggle.animating-off {
+      transform: scale(1.02);
+    }
+
+    .parallel-toggle-main {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 500;
+    }
+
+    .toggle-indicator {
+      position: relative;
+      width: 34px;
+      height: 20px;
+      border-radius: 999px;
+      background: var(--anchor-border);
+      transition: background 0.2s ease, box-shadow 0.22s ease;
+      flex-shrink: 0;
+    }
+
+    .toggle-indicator::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--anchor-bg);
+      transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    }
+
+    .parallel-toggle.active .toggle-indicator {
+      background: var(--anchor-accent);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--anchor-accent) 14%, transparent);
+    }
+
+    .parallel-toggle.active .toggle-indicator::after {
+      transform: translateX(14px);
+    }
+
+    .parallel-toggle.animating-on .toggle-indicator::after {
+      animation: popup-toggle-on 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .parallel-toggle.animating-off .toggle-indicator::after {
+      animation: popup-toggle-off 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    @keyframes popup-toggle-on {
+      0% {
+        transform: translateX(0) scale(1);
+      }
+      55% {
+        transform: translateX(16px) scale(1.08);
+      }
+      100% {
+        transform: translateX(14px) scale(1);
+      }
+    }
+
+    @keyframes popup-toggle-off {
+      0% {
+        transform: translateX(14px) scale(1);
+      }
+      55% {
+        transform: translateX(-2px) scale(1.05);
+      }
+      100% {
+        transform: translateX(0) scale(1);
+      }
+    }
+
+    .parallel-area-input {
+      width: 100%;
+      padding: 9px 12px;
+      background: var(--anchor-bg);
+      border: 1px solid var(--anchor-border);
+      border-radius: 10px;
+      color: var(--anchor-text);
+      font: inherit;
+      resize: none;
+      outline: none;
+      min-height: 88px;
+      opacity: 0.56;
+      transform: translateY(-6px);
+      transition:
+        border-color 0.15s ease,
+        opacity 0.18s ease,
+        transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .parallel-area-input:focus {
+      border-color: var(--anchor-text);
+    }
+
+    .parallel-area-input::placeholder {
+      color: var(--anchor-text-2);
+    }
+
+    .parallel-area-input:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .parallel-area-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      opacity: 0.72;
+      transform: translateY(-4px);
+      transition: opacity 0.18s ease, transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .parallel-area-count {
+      font-size: 12px;
+      color: var(--anchor-text-2);
+      min-height: 18px;
+    }
+
+    .parallel-area-send {
+      padding: 7px 14px;
+      background: var(--anchor-accent);
+      color: var(--anchor-accent-text);
+      border: none;
+      border-radius: 8px;
+      font: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s ease, transform 0.18s ease;
+    }
+
+    .parallel-area-send:hover:not(:disabled) {
+      opacity: 0.8;
+      transform: translateY(-1px);
+    }
+
+    .parallel-area-send:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .status {
+      font-size: 12px;
+      color: var(--anchor-text-2);
+      min-height: 18px;
+    }
+
+    .status.success {
+      color: #22c55e;
+    }
+
+    .status.error {
+      color: #ef4444;
+    }
+
+    .unsupported {
+      flex: 1;
+      padding: 24px 16px;
+      background: var(--anchor-bg-2);
+      color: var(--anchor-text-2);
+      line-height: 1.6;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .parallel-toggle,
+      .toggle-indicator,
+      .toggle-indicator::after,
+      .parallel-area-input,
+      .parallel-area-actions,
+      .parallel-area-send {
+        transition: none !important;
+        animation: none !important;
+        transform: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="popup-shell">
+    <div class="parallel-area">
+      <div class="parallel-area-header">
+        <span class="parallel-area-title">新建对话</span>
+        <span class="parallel-area-hint">和页面内并行模式保持一致</span>
+      </div>
+    </div>
+
+    <div class="platform-bar">
+      <span class="platform-label">平台</span>
+      <span class="platform-dot" id="platform-dot"></span>
+      <span class="platform-name" id="platform-name">检测中...</span>
+    </div>
+
+    <div id="main-content"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
