@@ -312,6 +312,8 @@
   let parallelComposerRefocusTimer = null;
   let pendingParallelAnimation = '';
   let activeIndexSyncFrame = null;
+  let lastKnownHref = window.location.href;
+  let lastKnownTitle = document.title;
   const PANEL_HIDE_DELAY = 140;
   let hidePanelTimer = null;
   let isHoveringTimeline = false;
@@ -667,6 +669,17 @@
 
   function isDoubaoUserMessageCandidate(el) {
     if (!isLikelyMessageElement(el)) return false;
+    if (el.closest([
+      '[class*="suggest"]',
+      '[class*="recommend"]',
+      '[class*="shortcut"]',
+      '[class*="starter"]',
+      '[class*="welcome"]',
+      '[class*="empty"]',
+      '[class*="guide"]'
+    ].join(', '))) {
+      return false;
+    }
 
     const explicitRole = getExplicitRoleFromAttributes(el);
     if (explicitRole === 'assistant') return false;
@@ -746,7 +759,60 @@
     return deduped;
   }
 
+  function isDoubaoEmptyConversationState() {
+    const pathname = window.location.pathname || '';
+    if (!/^\/chat\/?$/.test(pathname)) {
+      return false;
+    }
+
+    const pageText = normalizeMessageText(document.body?.innerText || '');
+    const hasWelcomeText = /(有什么我能帮你的吗|新对话|内容由豆包AI生成)/.test(pageText);
+    const hasChatHeader = safeQueryAll(document, 'h1, h2, h3, [class*="title"], [class*="header"]')
+      .some((el) => isElementVisible(el) && /(新对话|有什么我能帮你的吗)/.test(normalizeMessageText(el.textContent || '')));
+    const suggestionChipCount = safeQueryAll(document, 'button, [role="button"], [class*="chip"], [class*="card"]')
+      .filter((el) => {
+        if (!isElementVisible(el)) return false;
+        const text = normalizeMessageText(el.textContent || '');
+        return text.length >= 6 && text.length <= 40;
+      }).length;
+    const suggestionSelectors = [
+      '[class*="suggest"]',
+      '[class*="recommend"]',
+      '[class*="shortcut"]',
+      '[class*="starter"]',
+      '[class*="welcome"]'
+    ].join(', ');
+    const suggestionBlocks = safeQueryAll(document, suggestionSelectors)
+      .filter((el) => isElementVisible(el) && normalizeMessageText(el.textContent || '').length > 0);
+
+    const explicitConversationSignals = safeQueryAll(document, [
+      '[data-message-author]',
+      '[data-role]',
+      '[role="user-message"]',
+      '[role="assistant-message"]',
+      '.conversation-item[data-role="user"]',
+      '.conversation-item[data-role="assistant"]',
+      '[class*="assistant-message"]',
+      '[class*="answer-item"]',
+      '[class*="bot-message"]',
+      '[class*="user-message"]',
+      '[class*="query-item"]',
+      '[class*="question-item"]'
+    ].join(', ')).filter(isLikelyMessageElement);
+
+    return explicitConversationSignals.length === 0 && (
+      hasWelcomeText ||
+      hasChatHeader ||
+      suggestionChipCount >= 4 ||
+      (suggestionBlocks.length > 0 && hasWelcomeText)
+    );
+  }
+
   function extractDoubaoQAPairs() {
+    if (isDoubaoEmptyConversationState()) {
+      return [];
+    }
+
     const userMessages = collectDoubaoUserMessages();
 
     return userMessages.map((userMessage, index) => ({
@@ -790,12 +856,27 @@
     return results;
   }
 
+  function hasChatGPTConversationSignals() {
+    return !!document.querySelector([
+      '[data-message-author-role]',
+      '[data-testid="message-user"]',
+      '[data-testid="message-assistant"]',
+      '[data-testid^="conversation-turn"]',
+      '[data-id="conversation-turns"]',
+      '[data-testid="conversation-turns"]'
+    ].join(', '));
+  }
+
   // 提取 QA 对
   function extractQAPairs() {
     if (!currentPlatform) return [];
 
     if (currentPlatform.name === 'doubao') {
       return extractDoubaoQAPairs();
+    }
+
+    if (currentPlatform.name === 'chatgpt' && !hasChatGPTConversationSignals()) {
+      return [];
     }
 
     const directMessages = collectMessagesBySelectors();
@@ -1404,6 +1485,7 @@
     // 保留竖线，移除旧的点
     const existingDots = toggleButton.querySelectorAll('.ai-chat-anchor-timeline-dot');
     existingDots.forEach(dot => dot.remove());
+    toggleButton.classList.toggle('is-empty', qaPairs.length === 0);
     toggleButton.classList.toggle('has-items', qaPairs.length > 0);
 
     if (qaPairs.length === 0) return;
@@ -1519,6 +1601,30 @@
         updateActiveOnScroll();
       });
     }
+  }
+
+  function nodeContainsObservedMessage(node, observedSelectors) {
+    if (!(node instanceof Element) || isAnchorElement(node)) return false;
+    if (node.matches?.(observedSelectors)) return true;
+    return !!node.querySelector?.(observedSelectors);
+  }
+
+  function handleConversationContextChange() {
+    const hrefChanged = window.location.href !== lastKnownHref;
+    const titleChanged = document.title !== lastKnownTitle;
+
+    if (!hrefChanged && !titleChanged) return;
+
+    lastKnownHref = window.location.href;
+    lastKnownTitle = document.title;
+    currentActiveIndex = -1;
+
+    if (isParallelModeOpen()) {
+      updateParallelPaneCount();
+      return;
+    }
+
+    refreshList(searchInput ? searchInput.value : '');
   }
 
   // 渲染列表（带过滤）
@@ -1645,25 +1751,34 @@
 
     const observer = new MutationObserver((mutations) => {
       let shouldRefresh = false;
+      let shouldCheckContextChange = false;
 
       mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+          shouldCheckContextChange = true;
+        }
+
         if (mutation.addedNodes.length > 0) {
           mutation.addedNodes.forEach(node => {
-            if (node.nodeType === 1) {
-              if (isAnchorElement(node)) return;
-              if (node.matches && node.matches(observedSelectors)) {
-                shouldRefresh = true;
-              }
-              if (node.querySelector) {
-                const childMessages = node.querySelectorAll(observedSelectors);
-                if (childMessages.length > 0) {
-                  shouldRefresh = true;
-                }
-              }
+            if (nodeContainsObservedMessage(node, observedSelectors)) {
+              shouldRefresh = true;
+            }
+          });
+        }
+
+        if (mutation.removedNodes.length > 0) {
+          mutation.removedNodes.forEach(node => {
+            if (nodeContainsObservedMessage(node, observedSelectors)) {
+              shouldRefresh = true;
             }
           });
         }
       });
+
+      if (shouldCheckContextChange) {
+        clearTimeout(window._anchorContextTimer);
+        window._anchorContextTimer = setTimeout(handleConversationContextChange, 80);
+      }
 
       if (shouldRefresh) {
         clearTimeout(window._anchorRefreshTimer);
@@ -1703,6 +1818,34 @@
         container.addEventListener('scroll', handleScroll, { passive: true });
       });
     }, 2000);
+  }
+
+  function setupNavigationObserver() {
+    const scheduleContextCheck = () => {
+      clearTimeout(window._anchorNavTimer);
+      window._anchorNavTimer = setTimeout(handleConversationContextChange, 80);
+    };
+
+    const wrapHistoryMethod = (methodName) => {
+      const original = history[methodName];
+      if (typeof original !== 'function' || original.__aiAnchorWrapped) return;
+
+      const wrapped = function(...args) {
+        const result = original.apply(this, args);
+        scheduleContextCheck();
+        return result;
+      };
+
+      wrapped.__aiAnchorWrapped = true;
+      history[methodName] = wrapped;
+    };
+
+    wrapHistoryMethod('pushState');
+    wrapHistoryMethod('replaceState');
+
+    window.addEventListener('popstate', scheduleContextCheck);
+    window.addEventListener('hashchange', scheduleContextCheck);
+    setInterval(handleConversationContextChange, 1000);
   }
 
   // 根据滚动位置更新选中项
@@ -1895,6 +2038,7 @@
         applyTheme();
         setupThemeObserver();
         setupObserver();
+        setupNavigationObserver();
         setTimeout(() => { refreshList(); applyTheme(); }, 2000);
       }
       return;
@@ -1945,6 +2089,7 @@
     });
 
     setupObserver();
+    setupNavigationObserver();
 
     // 延迟扫描 QA 对，等待页面加载
     setTimeout(() => { refreshList(); applyTheme(); }, 2000);
