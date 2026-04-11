@@ -82,10 +82,7 @@
       aiMessageSelector: 'model-response, [role="model-message"], [data-message-author="model"], [data-role="model"], [class*="model-response"], [class*="response-content"]',
       messageSelector: 'user-query, model-response, [role="listitem"], [class*="conversation-item"], [class*="message"]',
       containerSelector: '[role="feed"], [role="log"], main, [role="main"]',
-      getMessageText: (el) => {
-        const text = el.textContent.trim().replace(/\s+/g, ' ');
-        return text.substring(0, 100);
-      },
+      getMessageText: (el) => extractGeminiMessageText(el),
       inputSelector: '.ql-editor[contenteditable="true"], rich-textarea [contenteditable="true"], [contenteditable="true"]',
       sendSelector: 'button[aria-label*="Send"], button.send-button, mat-icon-button[aria-label*="Send"]',
       inputType: 'contenteditable',
@@ -306,6 +303,9 @@
   let parallelPanesContainer = null;
   let parallelEmptyState = null;
   let parallelPaneSeq = 0;
+  let activeParallelPaneId = '';
+  let parallelDragState = null;
+  let isParallelPanelCollapsed = false;
   let parallelComposerArea = null;
   let parallelComposerInput = null;
   let isParallelComposerPinned = false;
@@ -421,6 +421,28 @@
     return text.replace(/\s+/g, ' ').trim();
   }
 
+  function stripLeadingSpeakerLabel(text = '') {
+    return normalizeMessageText(text)
+      .replace(/^(You said|You|User|Prompt|提问|问题)\s*:?\s*/i, '')
+      .replace(/^(Gemini said|Gemini|Answer|Response|回答)\s*:?\s*/i, '')
+      .trim();
+  }
+
+  function isLowSignalMessageText(text = '') {
+    const normalized = normalizeMessageText(text).toLowerCase();
+    if (!normalized) return true;
+    return [
+      'you said',
+      'you',
+      'user',
+      'prompt',
+      'gemini',
+      'answer',
+      'response',
+      '回答'
+    ].includes(normalized);
+  }
+
   function cleanElementText(el, excludeSelectors = []) {
     if (!el) return '';
     const clone = el.cloneNode(true);
@@ -458,6 +480,46 @@
     const fallbackText = cleanElementText(el, excludeSelectors);
     const text = preferredText || fallbackText;
     return maxLength > 0 ? text.substring(0, maxLength) : text;
+  }
+
+  function extractGeminiMessageText(el) {
+    if (!el) return '';
+
+    const text = extractStructuredText(el, {
+      preferredSelectors: [
+        '[data-testid*="user-query"]',
+        '[data-testid*="message-content"]',
+        '[data-testid*="response-content"]',
+        '[class*="query-text"]',
+        '[class*="query-content"]',
+        '[class*="user-query-content"]',
+        '[class*="message-content"]',
+        '[class*="response-content"]',
+        '[class*="markdown"]',
+        '[class*="model-response-text"]',
+        'message-content',
+        '.ql-editor',
+        'article',
+        'p'
+      ],
+      excludeSelectors: [
+        '[class*="toolbar"]',
+        '[class*="action"]',
+        '[class*="footer"]',
+        '[class*="chip"]',
+        '[class*="button"]',
+        '[class*="icon"]',
+        '[class*="avatar"]',
+        '[aria-label]',
+        'mat-icon',
+        'rich-textarea'
+      ],
+      maxLength: 0
+    });
+
+    const cleaned = stripLeadingSpeakerLabel(text);
+    if (isLowSignalMessageText(cleaned)) return '';
+    return cleaned.substring(0, 100);
   }
 
   function getMessageText(el) {
@@ -867,6 +929,21 @@
     ].join(', '));
   }
 
+  function getLucideIcon(name) {
+    const attrs = 'viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+    const icons = {
+      search: `<svg ${attrs}><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>`,
+      x: `<svg ${attrs}><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>`,
+      chevronsLeft: `<svg ${attrs}><path d="m11 17-5-5 5-5"></path><path d="m18 17-5-5 5-5"></path></svg>`,
+      chevronsRight: `<svg ${attrs}><path d="m6 17 5-5-5-5"></path><path d="m13 17 5-5-5-5"></path></svg>`,
+      panels: `<svg ${attrs}><rect x="3" y="4" width="7" height="16" rx="1.5"></rect><rect x="14" y="4" width="7" height="16" rx="1.5"></rect></svg>`,
+      grip: `<svg ${attrs}><path d="M9 6h.01"></path><path d="M15 6h.01"></path><path d="M9 12h.01"></path><path d="M15 12h.01"></path><path d="M9 18h.01"></path><path d="M15 18h.01"></path></svg>`,
+      target: `<svg ${attrs}><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="1.5"></circle><path d="M12 5V3"></path><path d="M12 21v-2"></path><path d="M19 12h2"></path><path d="M3 12h2"></path></svg>`,
+      trash: `<svg ${attrs}><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>`
+    };
+    return icons[name] || '';
+  }
+
   // 提取 QA 对
   function extractQAPairs() {
     if (!currentPlatform) return [];
@@ -898,28 +975,27 @@
       panelElement.classList.add('embedded-frame');
     }
 
-    const header = document.createElement('div');
-    header.className = 'ai-chat-anchor-header';
-    header.innerHTML = `
-      <span>问答目录</span>
-      <button class="ai-chat-anchor-close" title="收起">×</button>
-    `;
-
     // 搜索框
     const searchContainer = document.createElement('div');
     searchContainer.className = 'ai-chat-anchor-search';
     searchContainer.innerHTML = `
-      <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"></circle>
-        <path d="m21 21-4.35-4.35"></path>
-      </svg>
-      <input type="text" placeholder="搜索问答..." id="ai-chat-anchor-input">
-      <button class="search-clear" title="清除">×</button>
+      <input type="text" placeholder="搜索对话消息" id="ai-chat-anchor-input">
+      <span class="search-icon search-icon-static">${getLucideIcon('search')}</span>
+      <button class="search-clear" title="清除">${getLucideIcon('x')}</button>
     `;
 
     const list = document.createElement('div');
     list.className = 'ai-chat-anchor-list';
     list.id = 'ai-chat-anchor-list';
+
+    const parallelSheetHeader = document.createElement('div');
+    parallelSheetHeader.className = 'parallel-sheet-header';
+    parallelSheetHeader.innerHTML = `
+      <span class="parallel-sheet-title">并行对话</span>
+      <button class="parallel-panel-toggle parallel-panel-toggle-inline" id="parallel-panel-toggle" type="button" title="收起右侧面板" aria-label="收起右侧面板">
+        ${getLucideIcon('chevronsRight')}
+      </button>
+    `;
 
     // 并行模式输入区（默认隐藏）
     const parallelArea = document.createElement('div');
@@ -928,9 +1004,14 @@
     parallelArea.innerHTML = `
       <div class="parallel-area-header">
         <span class="parallel-area-title">新建对话</span>
-        <span class="parallel-area-hint">在当前页新增并排对话，Enter 发送</span>
       </div>
-      <textarea class="parallel-area-input" id="parallel-input" placeholder="输入问题，Enter 发送，Shift+Enter 换行..." rows="3"></textarea>
+      <textarea class="parallel-area-input" id="parallel-input" placeholder="问你想问的问题" rows="4"></textarea>
+      <div class="parallel-area-mode-row">
+        <span class="parallel-area-mode-label">并行模式</span>
+        <button class="parallel-toggle parallel-toggle-inline" id="parallel-inline-toggle" title="并行模式" aria-pressed="true" type="button">
+          <span class="toggle-indicator" aria-hidden="true"></span>
+        </button>
+      </div>
       <div class="parallel-area-actions">
         <span class="parallel-area-count" id="parallel-count"></span>
         <button class="parallel-area-send" id="parallel-send" disabled>新建对话</button>
@@ -940,20 +1021,14 @@
     const footer = document.createElement('div');
     footer.className = 'ai-chat-anchor-footer';
     footer.innerHTML = `
-      <span class="footer-count">共 <span id="qa-count">0</span> 轮对话</span>
+      <span class="footer-count">并行模式</span>
       <button class="parallel-toggle" id="parallel-toggle" title="并行模式" aria-pressed="false">
-        <span class="parallel-toggle-main">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="18" rx="1"/>
-          </svg>
-          <span class="parallel-toggle-label">并行模式</span>
-        </span>
         <span class="toggle-indicator" aria-hidden="true"></span>
       </button>
     `;
 
-    panelElement.appendChild(header);
     panelElement.appendChild(searchContainer);
+    panelElement.appendChild(parallelSheetHeader);
     panelElement.appendChild(list);
     panelElement.appendChild(parallelArea);
     panelElement.appendChild(footer);
@@ -989,36 +1064,43 @@
     const clearBtn = searchContainer.querySelector('.search-clear');
 
     searchInput.addEventListener('input', debounce((e) => {
+      const hasValue = e.target.value.length > 0;
       filterList(e.target.value);
-      clearBtn.classList.toggle('visible', e.target.value.length > 0);
+      clearBtn.classList.toggle('visible', hasValue);
+      searchContainer.classList.toggle('has-value', hasValue);
     }, 150));
 
     clearBtn.addEventListener('click', () => {
       searchInput.value = '';
       filterList('');
       clearBtn.classList.remove('visible');
+      searchContainer.classList.remove('has-value');
       searchInput.focus();
     });
 
-    // 绑定关闭事件
-    header.querySelector('.ai-chat-anchor-close').addEventListener('click', hidePanel);
-
     // 并行模式 toggle
     const toggleBtn = footer.querySelector('#parallel-toggle');
+    const inlineToggleBtn = panelElement.querySelector('#parallel-inline-toggle');
+    const collapsePanelBtn = panelElement.querySelector('#parallel-panel-toggle');
     const parallelInputArea = panelElement.querySelector('#ai-chat-anchor-parallel');
     parallelComposerArea = parallelInputArea;
 
     if (!isEmbeddedFrame) {
-      toggleBtn.addEventListener('click', () => {
+      const handleParallelToggleClick = () => {
         if (isParallelModeOpen()) {
           closeParallelWorkspace();
-          return;
+        } else {
+          openParallelWorkspace();
+          ensureSourceParallelPane();
+          updateParallelPaneCount();
+          setTimeout(() => panelElement.querySelector('#parallel-input')?.focus(), 50);
         }
+      };
 
-        openParallelWorkspace();
-        ensureSourceParallelPane();
-        updateParallelPaneCount();
-        setTimeout(() => panelElement.querySelector('#parallel-input')?.focus(), 50);
+      toggleBtn.addEventListener('click', handleParallelToggleClick);
+      inlineToggleBtn?.addEventListener('click', handleParallelToggleClick);
+      collapsePanelBtn?.addEventListener('click', () => {
+        setParallelPanelCollapsed(!isParallelPanelCollapsed);
       });
     }
 
@@ -1103,18 +1185,18 @@
   }
 
   function playParallelToggleAnimation(isOpening) {
-    const toggleBtn = panelElement?.querySelector('#parallel-toggle');
-    if (!toggleBtn) return;
-
     const className = isOpening ? 'animating-on' : 'animating-off';
-    toggleBtn.classList.remove('animating-on', 'animating-off');
-    void toggleBtn.offsetWidth;
-    toggleBtn.classList.add(className);
+    const toggleButtons = panelElement?.querySelectorAll('.parallel-toggle') || [];
+    toggleButtons.forEach((toggleBtn) => {
+      toggleBtn.classList.remove('animating-on', 'animating-off');
+      void toggleBtn.offsetWidth;
+      toggleBtn.classList.add(className);
 
-    clearTimeout(toggleBtn.__anchorToggleTimer);
-    toggleBtn.__anchorToggleTimer = setTimeout(() => {
-      toggleBtn.classList.remove(className);
-    }, 380);
+      clearTimeout(toggleBtn.__anchorToggleTimer);
+      toggleBtn.__anchorToggleTimer = setTimeout(() => {
+        toggleBtn.classList.remove(className);
+      }, 380);
+    });
   }
 
   // 创建刻度尺风格导航
@@ -1182,20 +1264,16 @@
     parallelWorkspaceElement.className = 'ai-chat-anchor-parallel-workspace';
     parallelWorkspaceElement.innerHTML = `
       <div class="parallel-workspace-shell">
-        <div class="parallel-workspace-toolbar">
-          <div class="parallel-workspace-meta">
-            <span class="parallel-workspace-title">并行回答</span>
-            <span class="parallel-workspace-subtitle">左侧保留当前对话，右侧新增并行会话</span>
-          </div>
-          <div class="parallel-workspace-actions">
-            <span class="parallel-workspace-count">未打开窗格</span>
-            <button class="parallel-workspace-close" title="关闭并行区">×</button>
-          </div>
-        </div>
-        <div class="parallel-workspace-panes" id="ai-chat-anchor-parallel-panes">
-          <div class="parallel-workspace-empty" id="ai-chat-anchor-parallel-empty">
-            <div class="parallel-workspace-empty-icon">∥</div>
-            <p>从右侧输入问题后，这里会在当前标签页内并排打开回答。</p>
+        <button class="parallel-workspace-close" title="关闭并行区">${getLucideIcon('x')}</button>
+        <button class="parallel-panel-toggle parallel-panel-toggle-floating" id="parallel-floating-panel-toggle" title="收起右侧面板" aria-label="收起右侧面板">
+          ${getLucideIcon('chevronsRight')}
+        </button>
+        <div class="parallel-workspace-stage">
+          <div class="parallel-workspace-panes" id="ai-chat-anchor-parallel-panes">
+            <div class="parallel-workspace-empty" id="ai-chat-anchor-parallel-empty">
+              <div class="parallel-workspace-empty-icon">∥</div>
+              <p>从右侧输入问题后，这里会在当前标签页内并排打开回答。</p>
+            </div>
           </div>
         </div>
       </div>
@@ -1204,10 +1282,17 @@
     document.body.appendChild(parallelWorkspaceElement);
     parallelPanesContainer = parallelWorkspaceElement.querySelector('#ai-chat-anchor-parallel-panes');
     parallelEmptyState = parallelWorkspaceElement.querySelector('#ai-chat-anchor-parallel-empty');
+    applyPlatformIdentity();
 
     parallelWorkspaceElement
       .querySelector('.parallel-workspace-close')
       .addEventListener('click', closeParallelWorkspace);
+
+    parallelWorkspaceElement
+      .querySelector('#parallel-floating-panel-toggle')
+      .addEventListener('click', () => {
+        setParallelPanelCollapsed(!isParallelPanelCollapsed);
+      });
 
     parallelWorkspaceElement.addEventListener('click', (e) => {
       if (e.target === parallelWorkspaceElement) {
@@ -1220,37 +1305,67 @@
     return !isEmbeddedFrame && !!parallelWorkspaceElement?.classList.contains('visible');
   }
 
+  function syncParallelPanelToggle() {
+    const collapsed = !!isParallelPanelCollapsed && isParallelModeOpen();
+    const toggles = document.querySelectorAll('.parallel-panel-toggle');
+    toggles.forEach((toggle) => {
+      toggle.innerHTML = collapsed ? getLucideIcon('chevronsLeft') : getLucideIcon('chevronsRight');
+      toggle.title = collapsed ? '展开右侧面板' : '收起右侧面板';
+      toggle.setAttribute('aria-label', collapsed ? '展开右侧面板' : '收起右侧面板');
+      toggle.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+    });
+  }
+
+  function setParallelPanelCollapsed(collapsed) {
+    if (isEmbeddedFrame) return;
+
+    isParallelPanelCollapsed = !!collapsed;
+    document.body.classList.toggle('anchor-parallel-panel-collapsed', isParallelPanelCollapsed && isParallelModeOpen());
+    syncParallelPanelToggle();
+
+    if (isParallelPanelCollapsed) {
+      stopParallelComposerFocusLock();
+    } else if (isParallelModeOpen()) {
+      setTimeout(() => panelElement?.querySelector('#parallel-input')?.focus({ preventScroll: true }), 60);
+    }
+  }
+
   function syncPanelMode() {
     if (!panelElement || isEmbeddedFrame) return;
 
-    const titleEl = panelElement.querySelector('.ai-chat-anchor-header span');
     const searchEl = panelElement.querySelector('.ai-chat-anchor-search');
     const listEl = panelElement.querySelector('#ai-chat-anchor-list');
     const parallelEl = panelElement.querySelector('#ai-chat-anchor-parallel');
-    const toggleBtn = panelElement.querySelector('#parallel-toggle');
+    const toggleButtons = panelElement.querySelectorAll('.parallel-toggle');
 
     if (isParallelModeOpen()) {
       panelElement.classList.add('parallel-mode', 'visible');
       isPanelVisible = true;
-      if (titleEl) titleEl.textContent = '并行工作台';
+      panelElement.style.top = '';
+      panelElement.style.right = '';
       if (searchEl) searchEl.style.display = 'none';
       if (parallelEl) parallelEl.classList.add('visible');
-      if (toggleBtn) {
+      toggleButtons.forEach((toggleBtn) => {
         toggleBtn.classList.add('active');
         toggleBtn.setAttribute('aria-pressed', 'true');
-      }
+      });
       renderParallelPaneList();
     } else {
       panelElement.classList.remove('parallel-mode');
-      if (titleEl) titleEl.textContent = '问答目录';
       if (searchEl) searchEl.style.display = '';
       if (parallelEl) parallelEl.classList.remove('visible');
-      if (toggleBtn) {
+      toggleButtons.forEach((toggleBtn) => {
         toggleBtn.classList.remove('active');
         toggleBtn.setAttribute('aria-pressed', 'false');
-      }
+      });
       refreshList(searchInput ? searchInput.value : '');
+      if (isPanelVisible) {
+        positionPanel();
+      }
     }
+
+    document.body.classList.toggle('anchor-parallel-panel-collapsed', isParallelPanelCollapsed && isParallelModeOpen());
+    syncParallelPanelToggle();
 
     if (pendingParallelAnimation) {
       playParallelToggleAnimation(pendingParallelAnimation === 'opening');
@@ -1279,6 +1394,7 @@
 
     stopParallelComposerFocusLock();
     document.body.classList.remove('anchor-parallel-open');
+    finishParallelPaneDrag({ cancel: true });
     parallelPanesContainer
       ?.querySelectorAll('.ai-chat-anchor-parallel-pane')
       ?.forEach((pane) => pane.remove());
@@ -1286,14 +1402,21 @@
     parallelWorkspaceElement.classList.remove('visible');
     if (wasOpen) pendingParallelAnimation = 'closing';
     parallelPaneSeq = 0;
+    activeParallelPaneId = '';
+    isParallelPanelCollapsed = false;
     if (parallelEmptyState) parallelEmptyState.style.display = '';
     syncPanelMode();
+    if (isPanelVisible) {
+      requestAnimationFrame(() => {
+        positionPanel();
+      });
+    }
     updateParallelPaneCount();
   }
 
   function updateParallelPaneCount() {
     const paneCount = parallelPanesContainer
-      ? parallelPanesContainer.querySelectorAll('.ai-chat-anchor-parallel-pane').length
+      ? parallelPanesContainer.querySelectorAll('.ai-chat-anchor-parallel-pane:not(.parallel-pane-placeholder)').length
       : 0;
 
     const sideCountEl = panelElement?.querySelector('#parallel-count');
@@ -1303,26 +1426,240 @@
         : '将在当前页内新增并排对话';
     }
 
-    const workspaceCountEl = parallelWorkspaceElement?.querySelector('.parallel-workspace-count');
-    if (workspaceCountEl) {
-      workspaceCountEl.textContent = paneCount > 0 ? `${paneCount} 个窗格` : '未打开窗格';
-    }
-
     if (isParallelModeOpen()) {
       renderParallelPaneList();
     }
   }
 
+  function getParallelPaneOrder(pane) {
+    return Number(pane?.dataset?.paneOrder || 0);
+  }
+
+  function getSortedParallelPanes({ includePlaceholder = false } = {}) {
+    const selector = includePlaceholder
+      ? '.ai-chat-anchor-parallel-pane'
+      : '.ai-chat-anchor-parallel-pane:not(.parallel-pane-placeholder)';
+
+    return Array.from(parallelPanesContainer?.querySelectorAll(selector) || [])
+      .sort((a, b) => getParallelPaneOrder(a) - getParallelPaneOrder(b));
+  }
+
+  function normalizeParallelPaneOrders() {
+    const panes = getSortedParallelPanes({ includePlaceholder: true });
+    panes.forEach((pane, index) => {
+      const nextOrder = String(index + 1);
+      pane.dataset.paneOrder = nextOrder;
+      pane.style.order = nextOrder;
+    });
+  }
+
+  function clearParallelPaneDraggingState() {
+    if (!parallelDragState) return;
+
+    const { pane, placeholder, handle } = parallelDragState;
+    handle?.classList.remove('is-visible');
+    pane?.classList.remove('is-dragging', 'show-drag-handle');
+    pane?.removeAttribute('style');
+    placeholder?.remove();
+    parallelDragState = null;
+  }
+
+  function reorderParallelPlaceholder(clientX) {
+    if (!parallelDragState?.placeholder || !parallelPanesContainer) return;
+
+    const { placeholder, pane: draggingPane } = parallelDragState;
+    const siblings = getSortedParallelPanes().filter((candidate) => candidate !== draggingPane);
+    let nextOrder = siblings.length + 1;
+
+    for (const candidate of siblings) {
+      const rect = candidate.getBoundingClientRect();
+      const midpoint = rect.left + (rect.width / 2);
+      if (clientX < midpoint) {
+        nextOrder = getParallelPaneOrder(candidate);
+        break;
+      }
+    }
+
+    if (getParallelPaneOrder(placeholder) !== nextOrder) {
+      getSortedParallelPanes({ includePlaceholder: true })
+        .filter((candidate) => candidate !== placeholder)
+        .forEach((candidate) => {
+          const candidateOrder = getParallelPaneOrder(candidate);
+          if (candidateOrder >= nextOrder) {
+            const bumpedOrder = String(candidateOrder + 1);
+            candidate.dataset.paneOrder = bumpedOrder;
+            candidate.style.order = bumpedOrder;
+          }
+        });
+
+      placeholder.dataset.paneOrder = String(nextOrder);
+      placeholder.style.order = String(nextOrder);
+      normalizeParallelPaneOrders();
+      renderParallelPaneList();
+    }
+  }
+
+  function updateParallelPaneDrag(clientX, clientY) {
+    if (!parallelDragState?.pane) return;
+
+    const { pane, offsetX, offsetY } = parallelDragState;
+    pane.style.left = `${clientX - offsetX}px`;
+    pane.style.top = `${clientY - offsetY}px`;
+    reorderParallelPlaceholder(clientX);
+  }
+
+  function finishParallelPaneDrag({ cancel = false } = {}) {
+    if (!parallelDragState) return;
+
+    const { pane, placeholder, handle, cleanup, pointerId, originalOrder } = parallelDragState;
+    cleanup?.();
+
+    if (handle && pointerId != null && handle.hasPointerCapture?.(pointerId)) {
+      handle.releasePointerCapture(pointerId);
+    }
+
+    pane.classList.remove('is-dragging');
+    pane.removeAttribute('style');
+
+    if (cancel) {
+      pane.dataset.paneOrder = String(originalOrder);
+      pane.style.order = String(originalOrder);
+    } else if (placeholder) {
+      const nextOrder = placeholder.dataset.paneOrder || String(originalOrder);
+      pane.dataset.paneOrder = nextOrder;
+      pane.style.order = nextOrder;
+    }
+
+    placeholder?.remove();
+    normalizeParallelPaneOrders();
+
+    pane.classList.remove('show-drag-handle');
+    handle?.classList.remove('is-visible');
+
+    parallelDragState = null;
+    renderParallelPaneList();
+  }
+
+  function startParallelPaneDrag(event, pane, handle) {
+    if (!parallelPanesContainer || parallelDragState) return;
+
+    const rect = pane.getBoundingClientRect();
+    const originalOrder = getParallelPaneOrder(pane);
+    const placeholder = document.createElement('div');
+    placeholder.className = 'ai-chat-anchor-parallel-pane parallel-pane-placeholder';
+    placeholder.style.width = `${rect.width}px`;
+    placeholder.style.minWidth = `${rect.width}px`;
+    placeholder.style.flex = `0 0 ${rect.width}px`;
+    placeholder.style.height = `${rect.height}px`;
+    placeholder.dataset.paneOrder = String(originalOrder);
+    placeholder.style.order = String(originalOrder);
+
+    parallelPanesContainer.appendChild(placeholder);
+
+    pane.classList.add('is-dragging', 'show-drag-handle');
+    handle.classList.add('is-visible');
+    pane.style.position = 'fixed';
+    pane.style.left = `${rect.left}px`;
+    pane.style.top = `${rect.top}px`;
+    pane.style.width = `${rect.width}px`;
+    pane.style.minWidth = `${rect.width}px`;
+    pane.style.height = `${rect.height}px`;
+    pane.style.margin = '0';
+    pane.style.zIndex = '2147483646';
+    pane.style.pointerEvents = 'none';
+
+    parallelDragState = {
+      pane,
+      handle,
+      placeholder,
+      pointerId: event.pointerId,
+      originalOrder,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      cleanup: null
+    };
+
+    const handlePointerMove = (moveEvent) => {
+      if (!parallelDragState || moveEvent.pointerId !== event.pointerId) return;
+      updateParallelPaneDrag(moveEvent.clientX, moveEvent.clientY);
+    };
+
+    const handlePointerUp = (upEvent) => {
+      if (!parallelDragState || upEvent.pointerId !== event.pointerId) return;
+      finishParallelPaneDrag();
+    };
+
+    const handlePointerCancel = (cancelEvent) => {
+      if (!parallelDragState || cancelEvent.pointerId !== event.pointerId) return;
+      finishParallelPaneDrag({ cancel: true });
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', handlePointerMove, true);
+      window.removeEventListener('pointerup', handlePointerUp, true);
+      window.removeEventListener('pointercancel', handlePointerCancel, true);
+    };
+
+    parallelDragState.cleanup = cleanup;
+
+    window.addEventListener('pointermove', handlePointerMove, true);
+    window.addEventListener('pointerup', handlePointerUp, true);
+    window.addEventListener('pointercancel', handlePointerCancel, true);
+
+    handle.setPointerCapture?.(event.pointerId);
+    updateParallelPaneDrag(event.clientX, event.clientY);
+  }
+
   function removeParallelPane(pane) {
     if (!pane) return;
 
+    const panes = getSortedParallelPanes();
+    const currentIndex = panes.findIndex((candidate) => candidate === pane);
+    const siblingToActivate = panes[currentIndex - 1] || panes[currentIndex + 1] || null;
+    const wasActivePane = pane.id && pane.id === activeParallelPaneId;
     pane.remove();
-    const hasPaneLeft = !!parallelPanesContainer?.querySelector('.ai-chat-anchor-parallel-pane');
+    normalizeParallelPaneOrders();
+    const hasPaneLeft = !!parallelPanesContainer?.querySelector('.ai-chat-anchor-parallel-pane:not(.parallel-pane-placeholder)');
     if (!hasPaneLeft) {
       closeParallelWorkspace();
       return;
     }
+
+    if (wasActivePane) {
+      setActiveParallelPane(siblingToActivate instanceof HTMLElement ? siblingToActivate : null, {
+        triggerRipple: false
+      });
+    }
+
     updateParallelPaneCount();
+  }
+
+  function setActiveParallelPane(pane, { triggerRipple = true } = {}) {
+    const panes = getSortedParallelPanes();
+    const nextActiveId = pane?.id || '';
+
+    panes.forEach((candidate) => {
+      const isActive = !!nextActiveId && candidate.id === nextActiveId;
+      candidate.classList.toggle('is-active', isActive);
+      if (!isActive) {
+        candidate.classList.remove('is-rippling');
+      }
+    });
+
+    activeParallelPaneId = nextActiveId;
+
+    if (pane && triggerRipple) {
+      pane.classList.remove('is-rippling');
+      void pane.offsetWidth;
+      pane.classList.add('is-rippling');
+    }
+
+    if (panelElement && isParallelModeOpen()) {
+      const listItems = panelElement.querySelectorAll('.parallel-pane-item');
+      listItems.forEach((item) => {
+        item.classList.toggle('is-active', item.dataset.paneId === activeParallelPaneId);
+      });
+    }
   }
 
   function createParallelPane({
@@ -1342,14 +1679,22 @@
     pane.dataset.paneTitle = title;
     pane.dataset.paneSubtitle = subtitle;
     pane.dataset.paneTooltip = tooltip;
+    pane.dataset.paneOrder = String(seq);
+    pane.style.order = String(seq);
 
     pane.innerHTML = `
-      <div class="parallel-pane-header">
-        <div class="parallel-pane-meta">
-          <span class="parallel-pane-title">${escapeHtml(title)} · 窗格 ${seq}</span>
-          <span class="parallel-pane-question" title="${escapeAttr(tooltip)}">${escapeHtml(subtitle)}</span>
+      <div class="parallel-pane-handle-zone" aria-hidden="true"></div>
+      <button class="parallel-pane-drag-handle" type="button" title="拖拽调整窗格顺序" aria-label="拖拽调整窗格顺序">
+        ${getLucideIcon('grip')}
+      </button>
+      <div class="parallel-pane-body">
+        <div class="parallel-pane-header">
+          <div class="parallel-pane-meta">
+            <span class="parallel-pane-title">${escapeHtml(title)} · 窗格 ${seq}</span>
+            <span class="parallel-pane-question" title="${escapeAttr(tooltip)}">${escapeHtml(subtitle)}</span>
+          </div>
+          <button class="parallel-pane-close" title="关闭窗格">×</button>
         </div>
-        <button class="parallel-pane-close" title="关闭窗格">×</button>
       </div>
     `;
 
@@ -1371,12 +1716,41 @@
       });
     }
 
+    pane.addEventListener('pointerdown', () => {
+      setActiveParallelPane(pane);
+    }, true);
+
+    iframe.addEventListener('focus', () => {
+      setActiveParallelPane(pane);
+    });
+
     pane.querySelector('.parallel-pane-close').addEventListener('click', () => {
       removeParallelPane(pane);
     });
 
-    pane.appendChild(iframe);
+    const handleZone = pane.querySelector('.parallel-pane-handle-zone');
+    const dragHandle = pane.querySelector('.parallel-pane-drag-handle');
+    handleZone?.addEventListener('pointerenter', () => {
+      if (parallelDragState?.pane === pane) return;
+      pane.classList.add('show-drag-handle');
+      dragHandle?.classList.add('is-visible');
+    });
+    pane.addEventListener('pointerleave', () => {
+      if (parallelDragState?.pane === pane) return;
+      pane.classList.remove('show-drag-handle');
+      dragHandle?.classList.remove('is-visible');
+    });
+    dragHandle?.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setActiveParallelPane(pane, { triggerRipple: false });
+      startParallelPaneDrag(event, pane, dragHandle);
+    });
+
+    pane.querySelector('.parallel-pane-body')?.appendChild(iframe);
     parallelPanesContainer?.appendChild(pane);
+    setActiveParallelPane(pane, { triggerRipple: kind !== 'source' });
     return pane;
   }
 
@@ -1387,7 +1761,7 @@
     const countEl = panelElement.querySelector('#qa-count');
     if (!list) return;
 
-    const panes = Array.from(parallelPanesContainer?.querySelectorAll('.ai-chat-anchor-parallel-pane') || []);
+    const panes = getSortedParallelPanes();
     if (countEl) countEl.textContent = String(panes.length);
 
     list.innerHTML = '';
@@ -1399,6 +1773,13 @@
     panes.forEach((pane, index) => {
       const item = document.createElement('div');
       item.className = 'ai-chat-anchor-item parallel-pane-item';
+      item.dataset.paneId = pane.id;
+      if (pane.dataset.paneKind === 'source') {
+        item.classList.add('is-source');
+      }
+      if (pane.id === activeParallelPaneId) {
+        item.classList.add('is-active');
+      }
 
       const subtitle = pane.dataset.paneSubtitle || `窗格 ${index + 1}`;
       const tooltip = pane.dataset.paneTooltip || subtitle;
@@ -1406,25 +1787,35 @@
       item.innerHTML = `
         <span class="qa-number">${index + 1}</span>
         <span class="qa-text">${escapeHtml(subtitle)}</span>
-        <button class="parallel-pane-delete" type="button" title="删除这个窗格" aria-label="删除这个窗格">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 6h18"/>
-            <path d="M8 6V4h8v2"/>
-            <path d="M19 6l-1 14H6L5 6"/>
-            <path d="M10 11v6"/>
-            <path d="M14 11v6"/>
-          </svg>
-        </button>
+        <div class="parallel-pane-actions">
+          <button class="parallel-pane-focus" type="button" title="定位到这个窗格" aria-label="定位到这个窗格">
+            ${getLucideIcon('target')}
+          </button>
+          <button class="parallel-pane-delete" type="button" title="删除这个窗格" aria-label="删除这个窗格">
+            ${getLucideIcon('trash')}
+          </button>
+        </div>
       `;
       item.title = tooltip;
 
+      const focusBtn = item.querySelector('.parallel-pane-focus');
       const deleteBtn = item.querySelector('.parallel-pane-delete');
+      focusBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setActiveParallelPane(pane);
+        pane.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        const frame = pane.querySelector('.parallel-pane-frame');
+        if (frame instanceof HTMLElement) {
+          frame.focus({ preventScroll: true });
+        }
+      });
       deleteBtn?.addEventListener('click', (e) => {
         e.stopPropagation();
         removeParallelPane(pane);
       });
 
       item.addEventListener('click', () => {
+        setActiveParallelPane(pane);
         pane.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
         const frame = pane.querySelector('.parallel-pane-frame');
         if (frame instanceof HTMLElement) {
@@ -1533,6 +1924,25 @@
     return isHoveringTimeline || isHoveringPanel || hasPanelFocus();
   }
 
+  function positionPanel() {
+    if (!panelElement || !toggleButton || isParallelModeOpen()) return;
+
+    const timelineRect = toggleButton.getBoundingClientRect();
+    const panelWidth = panelElement.offsetWidth || 320;
+    const panelHeight = panelElement.offsetHeight || 640;
+    const gap = 12;
+    const margin = 12;
+    const desiredRight = window.innerWidth - timelineRect.left + gap;
+    const maxRight = Math.max(margin, window.innerWidth - panelWidth - margin);
+    const right = Math.min(desiredRight, maxRight);
+    const centeredTop = timelineRect.top + (timelineRect.height / 2) - (panelHeight / 2);
+    const maxTop = Math.max(margin, window.innerHeight - panelHeight - margin);
+    const top = Math.min(Math.max(margin, centeredTop), maxTop);
+
+    panelElement.style.right = `${right}px`;
+    panelElement.style.top = `${top}px`;
+  }
+
   function scheduleHidePanel(delay = PANEL_HIDE_DELAY) {
     clearHidePanelTimer();
     hidePanelTimer = setTimeout(() => {
@@ -1549,6 +1959,7 @@
 
     if (panelElement) {
       panelElement.classList.add('visible');
+      positionPanel();
       syncPanelMode();
       refreshList();
       setTimeout(updateActiveOnScroll, 100);
@@ -1656,7 +2067,6 @@
         : qa.userText;
 
       item.innerHTML = `
-        <span class="qa-number">${index + 1}</span>
         <span class="qa-text">${escapeHtml(title)}</span>
       `;
 
@@ -1962,18 +2372,52 @@
     const isDark = detectDarkMode();
     if (isDark) {
       return {
-        '--anchor-bg':            '#09090b',
-        '--anchor-bg-2':          '#09090b',
+        '--anchor-bg':            '#101012',
+        '--anchor-bg-2':          '#121215',
         '--anchor-bg-3':          'rgba(255,255,255,0.08)',
-        '--anchor-text':          '#fafafa',
+        '--anchor-text':          '#f5f5f5',
         '--anchor-text-2':        '#a1a1aa',
-        '--anchor-border':        '#27272a',
-        '--anchor-shadow':        'rgba(0,0,0,0.5)',
-        '--anchor-dot-inactive':  'rgba(255,255,255,0.2)',
-        '--anchor-dot-active':    '#fafafa',
-        '--anchor-accent':        '#fafafa',
-        '--anchor-accent-text':   '#09090b',
-        '--anchor-accent-num-bg': 'rgba(0,0,0,0.2)',
+        '--anchor-border':        '#2a2a2f',
+        '--anchor-shadow':        'rgba(0,0,0,0.4)',
+        '--anchor-dot-inactive':  'rgba(255,255,255,0.32)',
+        '--anchor-dot-active':    '#f5f5f5',
+        '--anchor-accent':        '#f5f5f5',
+        '--anchor-accent-text':   '#111113',
+        '--anchor-accent-num-bg': 'rgba(0,0,0,0.18)',
+        '--anchor-panel-border-soft': '#2a2a2f',
+        '--anchor-panel-shadow-strong': 'rgba(0,0,0,0.36)',
+        '--anchor-panel-shadow-soft': 'rgba(0,0,0,0.28)',
+        '--anchor-input-text':    '#f5f5f5',
+        '--anchor-body-text':     '#d4d4d8',
+        '--anchor-muted-icon':    '#8f8f96',
+        '--anchor-muted-icon-strong': '#c5c5cb',
+        '--anchor-item-text':     '#b0b0b7',
+        '--anchor-item-hover':    'rgba(255,255,255,0.06)',
+        '--anchor-workspace-bg':  '#0b0b0d',
+        '--anchor-floating-bg':   '#18181b',
+        '--anchor-floating-text': '#b7b7bd',
+        '--anchor-floating-text-strong': '#ffffff',
+        '--anchor-pane-border':   'rgba(245,245,245,0.12)',
+        '--anchor-pane-bg':       '#141417',
+        '--anchor-pane-shadow':   '0 0 0 1px rgba(255,255,255,0.04), 0 16px 34px rgba(0,0,0,0.36)',
+        '--anchor-pane-handle-bg': 'rgba(24,24,27,0.96)',
+        '--anchor-pane-handle-text': 'rgba(245,245,245,0.56)',
+        '--anchor-pane-handle-shadow': '0 12px 28px rgba(0,0,0,0.34), 0 0 0 1px rgba(255,255,255,0.06)',
+        '--anchor-pane-handle-text-hover': 'rgba(255,255,255,0.9)',
+        '--anchor-pane-handle-shadow-hover': '0 14px 30px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.08)',
+        '--anchor-pane-active-border': 'rgba(245,245,245,0.92)',
+        '--anchor-pane-active-ring': 'rgba(245,245,245,0.14)',
+        '--anchor-pane-active-glow': 'rgba(245,245,245,0.06)',
+        '--anchor-pane-active-shadow': 'rgba(0,0,0,0.34)',
+        '--anchor-pane-drag-shadow': 'rgba(0,0,0,0.48)',
+        '--anchor-pane-placeholder-border': 'rgba(245,245,245,0.16)',
+        '--anchor-pane-placeholder-bg': 'linear-gradient(180deg, rgba(30,30,34,0.92), rgba(18,18,21,0.96))',
+        '--anchor-pane-placeholder-inset': 'rgba(255,255,255,0.05)',
+        '--anchor-pane-placeholder-highlight': 'rgba(245,245,245,0.1)',
+        '--anchor-toggle-track': '#3a3a40',
+        '--anchor-toggle-thumb': '#ffffff',
+        '--anchor-toggle-active': '#f5f5f5',
+        '--anchor-workspace-icon': '#c5c5cb',
       };
     } else {
       return {
@@ -1984,11 +2428,45 @@
         '--anchor-text-2':        '#71717a',
         '--anchor-border':        '#e4e4e7',
         '--anchor-shadow':        'rgba(0,0,0,0.08)',
-        '--anchor-dot-inactive':  'rgba(0,0,0,0.15)',
-        '--anchor-dot-active':    '#09090b',
+        '--anchor-dot-inactive':  '#cccccc',
+        '--anchor-dot-active':    '#3a3a3a',
         '--anchor-accent':        '#18181b',
         '--anchor-accent-text':   '#fafafa',
         '--anchor-accent-num-bg': 'rgba(255,255,255,0.2)',
+        '--anchor-panel-border-soft': '#ebebeb',
+        '--anchor-panel-shadow-strong': 'rgba(0,0,0,0.1)',
+        '--anchor-panel-shadow-soft': 'rgba(0,0,0,0.06)',
+        '--anchor-input-text':    '#000000',
+        '--anchor-body-text':     '#3d3d3d',
+        '--anchor-muted-icon':    '#a3a3a3',
+        '--anchor-muted-icon-strong': '#666666',
+        '--anchor-item-text':     '#666666',
+        '--anchor-item-hover':    'rgba(0,0,0,0.04)',
+        '--anchor-workspace-bg':  '#f5f5f5',
+        '--anchor-floating-bg':   '#ffffff',
+        '--anchor-floating-text': '#4b4b4b',
+        '--anchor-floating-text-strong': '#111111',
+        '--anchor-pane-border':   'rgba(24,24,27,0.14)',
+        '--anchor-pane-bg':       '#ffffff',
+        '--anchor-pane-shadow':   '0 0 0 1px rgba(255,255,255,0.88), 0 10px 26px rgba(15,23,42,0.06)',
+        '--anchor-pane-handle-bg': 'rgba(255,255,255,0.96)',
+        '--anchor-pane-handle-text': 'rgba(24,24,27,0.54)',
+        '--anchor-pane-handle-shadow': '0 10px 24px rgba(15,23,42,0.08), 0 0 0 1px rgba(255,255,255,0.82)',
+        '--anchor-pane-handle-text-hover': 'rgba(24,24,27,0.82)',
+        '--anchor-pane-handle-shadow-hover': '0 12px 26px rgba(15,23,42,0.11), 0 0 0 1px rgba(255,255,255,0.9)',
+        '--anchor-pane-active-border': 'rgba(24,24,27,0.92)',
+        '--anchor-pane-active-ring': 'rgba(24,24,27,0.16)',
+        '--anchor-pane-active-glow': 'rgba(24,24,27,0.08)',
+        '--anchor-pane-active-shadow': 'rgba(15,23,42,0.14)',
+        '--anchor-pane-drag-shadow': 'rgba(15,23,42,0.24)',
+        '--anchor-pane-placeholder-border': 'rgba(24,24,27,0.18)',
+        '--anchor-pane-placeholder-bg': 'linear-gradient(180deg, rgba(255,255,255,0.82), rgba(245,245,245,0.92))',
+        '--anchor-pane-placeholder-inset': 'rgba(255,255,255,0.86)',
+        '--anchor-pane-placeholder-highlight': 'rgba(24,24,27,0.08)',
+        '--anchor-toggle-track': '#d9d9de',
+        '--anchor-toggle-thumb': '#ffffff',
+        '--anchor-toggle-active': '#3a3a3a',
+        '--anchor-workspace-icon': '#4b4b4b',
       };
     }
   }
@@ -1999,6 +2477,18 @@
     if (font) palette['--anchor-font'] = font;
     [panelElement, toggleButton, parallelWorkspaceElement].filter(Boolean).forEach(el => {
       Object.entries(palette).forEach(([k, v]) => el.style.setProperty(k, v));
+    });
+  }
+
+  function applyPlatformIdentity() {
+    const platformName = currentPlatform?.name || '';
+    [panelElement, toggleButton, parallelWorkspaceElement].filter(Boolean).forEach((el) => {
+      if (!el) return;
+      if (platformName) {
+        el.dataset.anchorPlatform = platformName;
+      } else {
+        delete el.dataset.anchorPlatform;
+      }
     });
   }
 
@@ -2035,6 +2525,7 @@
 
         createPanel();
         createToggleButton();
+        applyPlatformIdentity();
         applyTheme();
         setupThemeObserver();
         setupObserver();
@@ -2056,6 +2547,7 @@
     // 立即创建 UI
     createPanel();
     createToggleButton();
+    applyPlatformIdentity();
 
     // 应用主题
     applyTheme();
@@ -2087,6 +2579,10 @@
         }
       }
     });
+
+    window.addEventListener('resize', () => {
+      if (isPanelVisible) positionPanel();
+    }, { passive: true });
 
     setupObserver();
     setupNavigationObserver();
