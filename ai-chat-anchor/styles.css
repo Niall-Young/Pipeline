@@ -588,6 +588,7 @@ body.anchor-embedded-frame .ai-chat-anchor-footer {
   flex: 1;
   min-width: 0;
   padding: 88px 360px 20px 20px;
+  overflow: hidden;
 }
 
 .parallel-workspace-close {
@@ -648,10 +649,12 @@ body.anchor-embedded-frame .ai-chat-anchor-footer {
   gap: 20px;
   padding: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   background: transparent;
   align-items: flex-start;
 }
 
+html.anchor-parallel-open,
 body.anchor-parallel-open {
   overflow: hidden;
 }

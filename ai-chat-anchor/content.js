@@ -315,6 +315,8 @@
   let lastKnownHref = window.location.href;
   let lastKnownTitle = document.title;
   const PANEL_HIDE_DELAY = 140;
+  const PARALLEL_PANE_AUTO_SCROLL_EDGE = 120;
+  const PARALLEL_PANE_AUTO_SCROLL_MAX_STEP = 22;
   let hidePanelTimer = null;
   let isHoveringTimeline = false;
   let isHoveringPanel = false;
@@ -1380,6 +1382,7 @@
   function openParallelWorkspace() {
     const wasOpen = isParallelModeOpen();
     ensureParallelWorkspace();
+    document.documentElement.classList.add('anchor-parallel-open');
     document.body.classList.add('anchor-parallel-open');
     parallelWorkspaceElement.classList.add('visible');
     if (!wasOpen) pendingParallelAnimation = 'opening';
@@ -1393,6 +1396,7 @@
     const wasOpen = isParallelModeOpen();
 
     stopParallelComposerFocusLock();
+    document.documentElement.classList.remove('anchor-parallel-open');
     document.body.classList.remove('anchor-parallel-open');
     finishParallelPaneDrag({ cancel: true });
     parallelPanesContainer
@@ -1457,6 +1461,7 @@
     if (!parallelDragState) return;
 
     const { pane, placeholder, handle } = parallelDragState;
+    stopParallelPaneAutoScroll();
     handle?.classList.remove('is-visible');
     pane?.classList.remove('is-dragging', 'show-drag-handle');
     pane?.removeAttribute('style');
@@ -1464,7 +1469,84 @@
     parallelDragState = null;
   }
 
-  function reorderParallelPlaceholder(clientX) {
+  function stopParallelPaneAutoScroll() {
+    if (!parallelDragState) return;
+
+    if (parallelDragState.autoScrollFrame) {
+      cancelAnimationFrame(parallelDragState.autoScrollFrame);
+      parallelDragState.autoScrollFrame = null;
+    }
+    parallelDragState.autoScrollVelocity = 0;
+  }
+
+  function getParallelPaneAutoScrollVelocity(clientX) {
+    if (!parallelPanesContainer) return 0;
+
+    const rect = parallelPanesContainer.getBoundingClientRect();
+    const maxScrollLeft = parallelPanesContainer.scrollWidth - parallelPanesContainer.clientWidth;
+    if (maxScrollLeft <= 0) return 0;
+
+    if (clientX <= rect.left + PARALLEL_PANE_AUTO_SCROLL_EDGE) {
+      const ratio = Math.min(1, (rect.left + PARALLEL_PANE_AUTO_SCROLL_EDGE - clientX) / PARALLEL_PANE_AUTO_SCROLL_EDGE);
+      return -Math.max(6, Math.round(PARALLEL_PANE_AUTO_SCROLL_MAX_STEP * ratio));
+    }
+
+    if (clientX >= rect.right - PARALLEL_PANE_AUTO_SCROLL_EDGE) {
+      const ratio = Math.min(1, (clientX - (rect.right - PARALLEL_PANE_AUTO_SCROLL_EDGE)) / PARALLEL_PANE_AUTO_SCROLL_EDGE);
+      return Math.max(6, Math.round(PARALLEL_PANE_AUTO_SCROLL_MAX_STEP * ratio));
+    }
+
+    return 0;
+  }
+
+  function stepParallelPaneAutoScroll() {
+    if (!parallelDragState || !parallelPanesContainer) return;
+
+    const velocity = parallelDragState.autoScrollVelocity || 0;
+    if (!velocity) {
+      parallelDragState.autoScrollFrame = null;
+      return;
+    }
+
+    const previousScrollLeft = parallelPanesContainer.scrollLeft;
+    parallelPanesContainer.scrollLeft += velocity;
+    const didScroll = parallelPanesContainer.scrollLeft !== previousScrollLeft;
+    if (!didScroll) {
+      parallelDragState.autoScrollFrame = null;
+      return;
+    }
+
+    parallelDragState.autoScrollFrame = requestAnimationFrame(stepParallelPaneAutoScroll);
+
+    if (didScroll) {
+      updateParallelPaneDrag(
+        parallelDragState.lastClientX,
+        parallelDragState.lastClientY,
+        { syncAutoScroll: false }
+      );
+    }
+  }
+
+  function syncParallelPaneAutoScroll(clientX) {
+    if (!parallelDragState) return;
+
+    const nextVelocity = getParallelPaneAutoScrollVelocity(clientX);
+    parallelDragState.autoScrollVelocity = nextVelocity;
+
+    if (!nextVelocity) {
+      if (parallelDragState.autoScrollFrame) {
+        cancelAnimationFrame(parallelDragState.autoScrollFrame);
+        parallelDragState.autoScrollFrame = null;
+      }
+      return;
+    }
+
+    if (!parallelDragState.autoScrollFrame) {
+      parallelDragState.autoScrollFrame = requestAnimationFrame(stepParallelPaneAutoScroll);
+    }
+  }
+
+  function reorderParallelPlaceholder(dragCenterX) {
     if (!parallelDragState?.placeholder || !parallelPanesContainer) return;
 
     const { placeholder, pane: draggingPane } = parallelDragState;
@@ -1474,7 +1556,7 @@
     for (const candidate of siblings) {
       const rect = candidate.getBoundingClientRect();
       const midpoint = rect.left + (rect.width / 2);
-      if (clientX < midpoint) {
+      if (dragCenterX < midpoint) {
         nextOrder = getParallelPaneOrder(candidate);
         break;
       }
@@ -1499,13 +1581,18 @@
     }
   }
 
-  function updateParallelPaneDrag(clientX, clientY) {
+  function updateParallelPaneDrag(clientX, clientY, { syncAutoScroll = true } = {}) {
     if (!parallelDragState?.pane) return;
 
     const { pane, offsetX, offsetY } = parallelDragState;
-    pane.style.left = `${clientX - offsetX}px`;
+    const dragLeft = clientX - offsetX;
+    const dragCenterX = dragLeft + (pane.offsetWidth / 2);
+    parallelDragState.lastClientX = clientX;
+    parallelDragState.lastClientY = clientY;
+    pane.style.left = `${dragLeft}px`;
     pane.style.top = `${clientY - offsetY}px`;
-    reorderParallelPlaceholder(clientX);
+    reorderParallelPlaceholder(dragCenterX);
+    if (syncAutoScroll) syncParallelPaneAutoScroll(clientX);
   }
 
   function finishParallelPaneDrag({ cancel = false } = {}) {
@@ -1513,6 +1600,7 @@
 
     const { pane, placeholder, handle, cleanup, pointerId, originalOrder } = parallelDragState;
     cleanup?.();
+    stopParallelPaneAutoScroll();
 
     if (handle && pointerId != null && handle.hasPointerCapture?.(pointerId)) {
       handle.releasePointerCapture(pointerId);
@@ -1576,6 +1664,10 @@
       originalOrder,
       offsetX: event.clientX - rect.left,
       offsetY: event.clientY - rect.top,
+      lastClientX: event.clientX,
+      lastClientY: event.clientY,
+      autoScrollVelocity: 0,
+      autoScrollFrame: null,
       cleanup: null
     };
 
