@@ -47,6 +47,8 @@
       hostname: /claude\.ai/,
       displayName: 'Claude',
       launchUrl: 'https://claude.ai/new',
+      historyItemSelector: 'nav a[href*="/chat/"], aside a[href*="/chat/"], [role="navigation"] a[href*="/chat/"]',
+      isHistoryUrl: (url) => /\/chat\//.test(url.pathname),
       userMessageSelector: '[data-testid="message-user"], [data-message-author-role="user"], [role="user-message"]',
       aiMessageSelector: '[data-testid="message-assistant"], [data-message-author-role="assistant"], [role="assistant-message"]',
       containerSelector: '[data-testid="conversation-turns"], main, [role="main"]',
@@ -62,6 +64,8 @@
       hostname: /chatgpt\.com/,
       displayName: 'ChatGPT',
       launchUrl: 'https://chatgpt.com/',
+      historyItemSelector: 'nav a[href^="/c/"], aside a[href^="/c/"], [role="navigation"] a[href^="/c/"]',
+      isHistoryUrl: (url) => /\/c\/[^/]+/.test(url.pathname),
       userMessageSelector: '[data-message-author-role="user"], [data-testid="message-user"]',
       aiMessageSelector: '[data-message-author-role="assistant"], [data-testid="message-assistant"]',
       messageSelector: '[data-message-author-role], [data-testid^="conversation-turn"], article',
@@ -78,6 +82,8 @@
       hostname: /gemini\.google\.com/,
       displayName: 'Gemini',
       launchUrl: 'https://gemini.google.com/',
+      historyItemSelector: 'nav a[href*="/app/"], aside a[href*="/app/"], [role="navigation"] a[href*="/app/"]',
+      isHistoryUrl: (url) => /\/app\//.test(url.pathname),
       userMessageSelector: 'user-query, [role="user-message"], [data-message-author="user"], [data-role="user"], [class*="user-query"]',
       aiMessageSelector: 'model-response, [role="model-message"], [data-message-author="model"], [data-role="model"], [class*="model-response"], [class*="response-content"]',
       messageSelector: 'user-query, model-response, [role="listitem"], [class*="conversation-item"], [class*="message"]',
@@ -91,6 +97,8 @@
       hostname: /doubao\.com/,
       displayName: '豆包',
       launchUrl: 'https://www.doubao.com/chat/',
+      historyItemSelector: 'nav a[href*="/chat/"], aside a[href*="/chat/"], [role="navigation"] a[href*="/chat/"]',
+      isHistoryUrl: (url) => /\/chat\//.test(url.pathname),
       userMessageSelector: '[data-message-author="user"], [role="user-message"], [data-role="user"], .conversation-item[data-role="user"], [class*="user-message"], [class*="question-item"], [class*="query-item"]',
       aiMessageSelector: '[data-message-author="assistant"], [role="assistant-message"], [data-role="assistant"], .conversation-item[data-role="assistant"], [class*="assistant-message"], [class*="answer-item"], [class*="bot-message"]',
       messageSelector: '[data-message-author], [data-role], [role="user-message"], [role="assistant-message"], [data-testid="chat-item"], [class*="user-message"], [class*="assistant-message"], [class*="question-item"], [class*="answer-item"], [class*="query-item"], [class*="bot-message"]',
@@ -131,6 +139,8 @@
       hostname: /qianwen\.com/,
       displayName: '千问',
       launchUrl: 'https://qianwen.com/',
+      historyItemSelector: 'nav a[href*="/c/"], nav a[href*="/chat/"], aside a[href*="/c/"], aside a[href*="/chat/"], [role="navigation"] a[href*="/c/"], [role="navigation"] a[href*="/chat/"]',
+      isHistoryUrl: (url) => /\/(c|chat)\//.test(url.pathname),
       userMessageSelector: '[data-role="user"], .user-message, .message-item[data-role="user"], [class*="questionItem"], [class*="question-item"], [class*="user-message"]',
       aiMessageSelector: '[data-role="assistant"], .assistant-message, .message-item[data-role="assistant"], [class*="answerItem"], [class*="answer-item"], [class*="assistant-message"]',
       messageSelector: '.message-item, .conversation-item, [class*="message-list"] > *, [class*="question"], [class*="answer"], article',
@@ -321,6 +331,12 @@
   let isParallelPanelCollapsed = false;
   let parallelComposerArea = null;
   let parallelComposerInput = null;
+  let parallelHistoryToggle = null;
+  let parallelHistoryPanel = null;
+  let parallelHistoryInput = null;
+  let parallelHistoryList = null;
+  let parallelHistoryItems = [];
+  let isParallelHistoryOpen = false;
   let isParallelComposerPinned = false;
   let parallelComposerRefocusTimer = null;
   let parallelComposerLastInteractionAt = 0;
@@ -953,6 +969,8 @@
     const attrs = 'viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
     const icons = {
       search: `<svg ${attrs}><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>`,
+      history: `<svg ${attrs}><path d="M12 8v5l3 2"></path><path d="M3.05 11a9 9 0 1 1 .5 4"></path><path d="M3 4v7h7"></path></svg>`,
+      externalLink: `<svg ${attrs}><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>`,
       x: `<svg ${attrs}><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>`,
       chevronsLeft: `<svg ${attrs}><path d="m11 17-5-5 5-5"></path><path d="m18 17-5-5 5-5"></path></svg>`,
       chevronsRight: `<svg ${attrs}><path d="m6 17 5-5-5-5"></path><path d="m13 17 5-5-5-5"></path></svg>`,
@@ -1024,6 +1042,10 @@
     parallelArea.innerHTML = `
       <div class="parallel-area-header">
         <span class="parallel-area-title">新建对话</span>
+        <button class="parallel-history-toggle" id="parallel-history-toggle" type="button" title="搜索历史对话" aria-expanded="false">
+          ${getLucideIcon('history')}
+          <span>历史对话</span>
+        </button>
       </div>
       <textarea class="parallel-area-input" id="parallel-input" placeholder="问你想问的问题" rows="4"></textarea>
       <div class="parallel-area-mode-row">
@@ -1053,6 +1075,28 @@
     panelElement.appendChild(parallelArea);
     panelElement.appendChild(footer);
     document.body.appendChild(panelElement);
+
+    parallelHistoryPanel = document.createElement('div');
+    parallelHistoryPanel.className = 'parallel-history-dialog';
+    parallelHistoryPanel.id = 'parallel-history-panel';
+    parallelHistoryPanel.hidden = true;
+    parallelHistoryPanel.innerHTML = `
+      <div class="parallel-history-dialog-backdrop" data-role="history-backdrop"></div>
+      <div class="parallel-history-dialog-card" role="dialog" aria-modal="true" aria-labelledby="parallel-history-dialog-title">
+        <div class="parallel-history-dialog-header">
+          <div class="parallel-history-dialog-title" id="parallel-history-dialog-title">搜索历史对话</div>
+          <button class="parallel-history-dialog-close" id="parallel-history-close" type="button" title="关闭">
+            ${getLucideIcon('x')}
+          </button>
+        </div>
+        <div class="parallel-history-search">
+          <span class="parallel-history-search-icon">${getLucideIcon('search')}</span>
+          <input class="parallel-history-input" id="parallel-history-input" type="text" placeholder="搜索以前的对话标题">
+        </div>
+        <div class="parallel-history-list" id="parallel-history-list"></div>
+      </div>
+    `;
+    document.body.appendChild(parallelHistoryPanel);
 
     panelElement.addEventListener('mouseenter', () => {
       isHoveringPanel = true;
@@ -1127,6 +1171,10 @@
     // 并行发送 - 在当前标签页内追加并行窗格
     const parallelSendBtn = panelElement.querySelector('#parallel-send');
     const parallelInput = panelElement.querySelector('#parallel-input');
+    parallelHistoryToggle = panelElement.querySelector('#parallel-history-toggle');
+    parallelHistoryInput = parallelHistoryPanel.querySelector('#parallel-history-input');
+    parallelHistoryList = parallelHistoryPanel.querySelector('#parallel-history-list');
+    const parallelHistoryCloseBtn = parallelHistoryPanel.querySelector('#parallel-history-close');
     parallelComposerInput = parallelInput;
     const syncParallelComposer = () => {
       parallelSendBtn.disabled = parallelInput.value.trim().length === 0;
@@ -1145,8 +1193,32 @@
 
     syncParallelComposer();
     updateParallelPaneCount();
+    renderParallelHistoryList();
 
     if (!isEmbeddedFrame) {
+      parallelHistoryToggle?.addEventListener('click', () => {
+        toggleParallelHistoryPanel();
+      });
+      parallelHistoryCloseBtn?.addEventListener('click', () => {
+        closeParallelHistoryPanel();
+        parallelInput.focus({ preventScroll: true });
+      });
+      parallelHistoryPanel?.addEventListener('click', (e) => {
+        if (e.target instanceof Element && e.target.getAttribute('data-role') === 'history-backdrop') {
+          closeParallelHistoryPanel();
+          parallelInput.focus({ preventScroll: true });
+        }
+      });
+      parallelHistoryInput?.addEventListener('input', () => {
+        renderParallelHistoryList(parallelHistoryInput.value);
+      });
+      parallelHistoryInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeParallelHistoryPanel();
+          parallelInput.focus({ preventScroll: true });
+        }
+      });
       parallelInput.addEventListener('input', () => {
         markParallelComposerInteraction();
         syncParallelComposer();
@@ -1478,6 +1550,7 @@
     if (!wasOpen) pendingParallelAnimation = 'opening';
     applyTheme();
     syncPanelMode();
+    refreshParallelHistoryItems();
     updateParallelPaneCount();
   }
 
@@ -1498,6 +1571,7 @@
     parallelPaneSeq = 0;
     activeParallelPaneId = '';
     isParallelPanelCollapsed = false;
+    closeParallelHistoryPanel();
     if (parallelEmptyState) parallelEmptyState.style.display = '';
     syncPanelMode();
     if (isPanelVisible) {
@@ -1954,6 +2028,298 @@
     return pane;
   }
 
+  function normalizeHistoryTitle(text = '') {
+    return normalizeMessageText(text)
+      .replace(/^(打开侧边栏|打开历史记录|聊天记录|对话历史)\s*/i, '')
+      .trim();
+  }
+
+  function resolveHistoryUrl(href = '') {
+    if (!href || href.startsWith('javascript:') || href.startsWith('#')) return '';
+    try {
+      return new URL(href, window.location.origin).href;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function isLikelyHistoryAnchor(anchor, url) {
+    if (!(anchor instanceof HTMLAnchorElement) || !url) return false;
+
+    try {
+      const parsedUrl = new URL(url);
+      if (parsedUrl.origin !== window.location.origin) return false;
+      if (currentPlatform?.isHistoryUrl) {
+        return currentPlatform.isHistoryUrl(parsedUrl);
+      }
+      return /\/(c|chat|conversation|app)\//.test(parsedUrl.pathname);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function getScrollableHistoryContainer() {
+    const selector = [
+      currentPlatform?.historyItemSelector,
+      'nav a[href]',
+      'aside a[href]',
+      '[role="navigation"] a[href]'
+    ].filter(Boolean).join(', ');
+
+    const anchors = safeQueryAll(document, selector).filter((anchor) => {
+      if (!(anchor instanceof HTMLAnchorElement)) return false;
+      const href = resolveHistoryUrl(anchor.getAttribute('href') || '');
+      return isLikelyHistoryAnchor(anchor, href);
+    });
+
+    const visited = new Set();
+    for (const anchor of anchors) {
+      let node = anchor.parentElement;
+      while (node && node !== document.body) {
+        if (visited.has(node)) {
+          node = node.parentElement;
+          continue;
+        }
+        visited.add(node);
+
+        const style = window.getComputedStyle(node);
+        const overflowY = style.overflowY || '';
+        const isScrollable = /(auto|scroll|overlay)/.test(overflowY) && node.scrollHeight > node.clientHeight + 80;
+        if (isScrollable) {
+          return node;
+        }
+        node = node.parentElement;
+      }
+    }
+
+    return null;
+  }
+
+  function mergeHistoryItems(existingItems = [], nextItems = []) {
+    const merged = new Map();
+    existingItems.forEach((item) => {
+      if (item?.url && item?.title) merged.set(item.url, item);
+    });
+    nextItems.forEach((item) => {
+      if (item?.url && item?.title) merged.set(item.url, item);
+    });
+    return Array.from(merged.values());
+  }
+
+  function getHistoryLoadMoreControls() {
+    const selectors = [
+      'button',
+      '[role="button"]',
+      'a',
+      '[data-testid*="more"]',
+      '[aria-label]'
+    ].join(', ');
+
+    return safeQueryAll(document, selectors).filter((el) => {
+      if (!(el instanceof HTMLElement) || !isElementVisible(el) || isAnchorElement(el)) return false;
+      const text = normalizeMessageText(
+        el.getAttribute('aria-label') ||
+        el.getAttribute('title') ||
+        el.textContent ||
+        ''
+      ).toLowerCase();
+
+      if (!text) return false;
+      return /(show more|load more|see more|expand|more conversations|更多|显示更多|加载更多|展开)/i.test(text);
+    });
+  }
+
+  function pokeHistoryScroller(scroller, amount) {
+    if (!(scroller instanceof HTMLElement)) return;
+
+    scroller.focus?.({ preventScroll: true });
+    scroller.dispatchEvent(new WheelEvent('wheel', {
+      deltaY: amount,
+      bubbles: true,
+      cancelable: true
+    }));
+    scroller.scrollTop = Math.max(0, Math.min(scroller.scrollTop + amount, scroller.scrollHeight));
+    scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+  }
+
+  function collectParallelHistoryItems() {
+    if (!currentPlatform) return [];
+
+    const selector = [
+      currentPlatform.historyItemSelector,
+      'nav a[href]',
+      'aside a[href]',
+      '[role="navigation"] a[href]'
+    ].filter(Boolean).join(', ');
+
+    const items = [];
+    const seen = new Set();
+
+    safeQueryAll(document, selector).forEach((anchor) => {
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+
+      const href = resolveHistoryUrl(anchor.getAttribute('href') || '');
+      if (!isLikelyHistoryAnchor(anchor, href)) return;
+
+      const title = normalizeHistoryTitle(
+        anchor.getAttribute('aria-label') ||
+        anchor.getAttribute('title') ||
+        anchor.textContent ||
+        ''
+      );
+
+      if (!title || title.length < 2 || seen.has(href)) return;
+
+      seen.add(href);
+      items.push({ url: href, title });
+    });
+
+    return items;
+  }
+
+  function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function collectParallelHistoryItemsExhaustively() {
+    const initialItems = collectParallelHistoryItems();
+    const scroller = getScrollableHistoryContainer();
+    if (!scroller) return initialItems;
+
+    const originalScrollTop = scroller.scrollTop;
+    const maxPasses = 18;
+    const settledThreshold = 2;
+    let stagnantPasses = 0;
+    let accumulatedItems = [...initialItems];
+    let lastCount = accumulatedItems.length;
+
+    try {
+      scroller.scrollTop = 0;
+      await wait(80);
+      accumulatedItems = mergeHistoryItems(accumulatedItems, collectParallelHistoryItems());
+
+      for (let pass = 0; pass < maxPasses; pass += 1) {
+        getHistoryLoadMoreControls().forEach((control) => {
+          control.click?.();
+        });
+
+        pokeHistoryScroller(scroller, Math.max(scroller.clientHeight * 0.85, 240));
+        await wait(160);
+
+        accumulatedItems = mergeHistoryItems(accumulatedItems, collectParallelHistoryItems());
+        const nextCount = accumulatedItems.length;
+        const reachedBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 6;
+
+        if (nextCount <= lastCount) {
+          stagnantPasses += 1;
+        } else {
+          stagnantPasses = 0;
+          lastCount = nextCount;
+        }
+
+        if (reachedBottom && stagnantPasses >= settledThreshold) break;
+      }
+    } finally {
+      scroller.scrollTop = originalScrollTop;
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+    }
+
+    return accumulatedItems;
+  }
+
+  function renderParallelHistoryList(query = '') {
+    if (!parallelHistoryList) return;
+
+    const normalizedQuery = normalizeHistoryTitle(query).toLowerCase();
+    const filteredItems = normalizedQuery
+      ? parallelHistoryItems.filter((item) => item.title.toLowerCase().includes(normalizedQuery))
+      : parallelHistoryItems;
+
+    if (parallelHistoryItems.length === 0) {
+      parallelHistoryList.innerHTML = '<div class="parallel-history-empty">没有读到历史对话，先展开平台左侧历史列表试试</div>';
+      return;
+    }
+
+    if (filteredItems.length === 0) {
+      parallelHistoryList.innerHTML = '<div class="parallel-history-empty">没有匹配到相关历史对话</div>';
+      return;
+    }
+
+    parallelHistoryList.innerHTML = '';
+    filteredItems.forEach((item) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'parallel-history-item';
+      button.title = item.title;
+      button.innerHTML = `<span class="parallel-history-item-text">${escapeHtml(item.title)}</span>`;
+      button.addEventListener('click', () => {
+        closeParallelHistoryPanel();
+        openParallelHistoryPane(item);
+      });
+      parallelHistoryList.appendChild(button);
+    });
+  }
+
+  async function refreshParallelHistoryItems({ exhaustive = false } = {}) {
+    parallelHistoryItems = exhaustive
+      ? await collectParallelHistoryItemsExhaustively()
+      : collectParallelHistoryItems();
+    renderParallelHistoryList(parallelHistoryInput?.value || '');
+  }
+
+  function openParallelHistoryPane(item) {
+    if (!item?.url) return;
+
+    openParallelWorkspace();
+    ensureSourceParallelPane();
+
+    const platformLabel = currentPlatform?.displayName || currentPlatform?.name || '当前平台';
+    const subtitle = item.title.length > 48 ? `${item.title.substring(0, 48)}…` : item.title;
+    createParallelPane({
+      title: `${platformLabel} · 历史对话`,
+      subtitle,
+      tooltip: item.title,
+      src: item.url,
+      kind: 'history'
+    });
+    updateParallelPaneCount();
+  }
+
+  async function openParallelHistoryPanel() {
+    if (!parallelHistoryPanel) return;
+
+    parallelHistoryItems = [];
+    renderParallelHistoryList();
+    isParallelHistoryOpen = true;
+    parallelHistoryPanel.hidden = false;
+    document.body.classList.add('anchor-history-dialog-open');
+    parallelHistoryToggle?.setAttribute('aria-expanded', 'true');
+
+    setTimeout(() => {
+      parallelHistoryInput?.focus({ preventScroll: true });
+      parallelHistoryInput?.select?.();
+    }, 0);
+
+    await refreshParallelHistoryItems({ exhaustive: true });
+  }
+
+  function closeParallelHistoryPanel() {
+    if (!parallelHistoryPanel) return;
+
+    isParallelHistoryOpen = false;
+    parallelHistoryPanel.hidden = true;
+    document.body.classList.remove('anchor-history-dialog-open');
+    parallelHistoryToggle?.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleParallelHistoryPanel() {
+    if (isParallelHistoryOpen) {
+      closeParallelHistoryPanel();
+    } else {
+      openParallelHistoryPanel();
+    }
+  }
+
   function renderParallelPaneList() {
     if (!panelElement || !isParallelModeOpen()) return;
 
@@ -2268,6 +2634,7 @@
     currentActiveIndex = -1;
 
     if (isParallelModeOpen()) {
+      refreshParallelHistoryItems();
       updateParallelPaneCount();
       return;
     }
@@ -2714,14 +3081,14 @@
     const palette = buildPalette();
     const font = getComputedStyle(document.body).fontFamily;
     if (font) palette['--anchor-font'] = font;
-    [panelElement, toggleButton, parallelWorkspaceElement].filter(Boolean).forEach(el => {
+    [panelElement, toggleButton, parallelWorkspaceElement, parallelHistoryPanel].filter(Boolean).forEach(el => {
       Object.entries(palette).forEach(([k, v]) => el.style.setProperty(k, v));
     });
   }
 
   function applyPlatformIdentity() {
     const platformName = currentPlatform?.name || '';
-    [panelElement, toggleButton, parallelWorkspaceElement].filter(Boolean).forEach((el) => {
+    [panelElement, toggleButton, parallelWorkspaceElement, parallelHistoryPanel].filter(Boolean).forEach((el) => {
       if (!el) return;
       if (platformName) {
         el.dataset.anchorPlatform = platformName;

@@ -2,7 +2,8 @@
 
 /* 默认兜底值（浅色 shadcn），JS 运行后会覆盖 */
 .ai-chat-anchor-panel,
-.ai-chat-anchor-timeline {
+.ai-chat-anchor-timeline,
+.parallel-history-dialog {
   --anchor-bg: #ffffff;
   --anchor-bg-2: #ffffff;
   --anchor-bg-3: rgba(0, 0, 0, 0.04);
@@ -65,7 +66,8 @@
 
 @media (prefers-color-scheme: dark) {
   .ai-chat-anchor-panel,
-  .ai-chat-anchor-timeline {
+  .ai-chat-anchor-timeline,
+  .parallel-history-dialog {
     --anchor-bg: #101012;
     --anchor-bg-2: #121215;
     --anchor-bg-3: rgba(255, 255, 255, 0.08);
@@ -462,6 +464,177 @@ body.anchor-parallel-open .ai-chat-anchor-panel .ai-chat-anchor-footer {
   font-size: 16px;
   font-weight: 600;
   color: var(--anchor-input-text);
+}
+
+.parallel-history-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--anchor-panel-border-soft);
+  border-radius: 999px;
+  background: var(--anchor-bg);
+  color: var(--anchor-item-text);
+  font-size: 12px;
+  font-family: var(--anchor-font);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.parallel-history-toggle:hover,
+.parallel-history-toggle[aria-expanded="true"] {
+  background: var(--anchor-workspace-bg);
+  color: var(--anchor-text);
+}
+
+.parallel-history-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+}
+
+.parallel-history-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--anchor-floating-text-strong) 24%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.parallel-history-dialog-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(70vh, 720px);
+  padding: 16px;
+  border: 1px solid var(--anchor-panel-border-soft);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--anchor-bg-2) 94%, var(--anchor-floating-bg) 6%);
+  box-shadow: 0 24px 72px var(--anchor-panel-shadow-strong);
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.parallel-history-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.parallel-history-dialog-title {
+  color: var(--anchor-input-text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.parallel-history-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--anchor-panel-border-soft);
+  border-radius: 999px;
+  background: var(--anchor-bg-3);
+  color: var(--anchor-item-text);
+  cursor: pointer;
+}
+
+.parallel-history-dialog-close:hover {
+  background: var(--anchor-item-hover);
+  color: var(--anchor-text);
+}
+
+.parallel-history-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--anchor-panel-border-soft);
+  border-radius: 10px;
+  background: var(--anchor-bg);
+}
+
+.parallel-history-search {
+  position: relative;
+}
+
+.parallel-history-search-icon {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--anchor-muted-icon);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.parallel-history-input {
+  width: 100%;
+  padding: 10px 12px 10px 34px;
+  background: transparent;
+  border: 1px solid var(--anchor-panel-border-soft);
+  border-radius: 8px;
+  color: var(--anchor-input-text);
+  font-size: 13px;
+  font-family: var(--anchor-font);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.parallel-history-input::placeholder {
+  color: var(--anchor-muted-icon);
+}
+
+.parallel-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(46vh, 420px);
+  overflow: auto;
+}
+
+.parallel-history-item {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--anchor-item-text);
+  text-align: left;
+  font-size: 13px;
+  font-family: var(--anchor-font);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.parallel-history-item:hover {
+  background: var(--anchor-item-hover);
+  color: var(--anchor-text);
+}
+
+.parallel-history-item-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.parallel-history-empty {
+  padding: 12px 4px;
+  color: var(--anchor-text-2);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .parallel-area-input {
