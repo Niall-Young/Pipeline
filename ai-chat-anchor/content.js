@@ -244,6 +244,10 @@
   async function injectQuestion(question) {
     const platform = detectPlatform();
 
+    if (isEmbeddedFrame) {
+      allowEmbeddedFrameFocus(1500);
+    }
+
     // 确定输入框选择器
     const inputSel = platform
       ? platform.inputSelector
@@ -289,6 +293,15 @@
     if (!sent) {
       inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
     }
+
+    if (isEmbeddedFrame) {
+      embeddedFrameInteractionUntil = 0;
+      guardEmbeddedFrameAutofocus(20000);
+      setTimeout(() => enforceEmbeddedFrameFocusGuard('inject-sent'), 0);
+      setTimeout(() => enforceEmbeddedFrameFocusGuard('generation-start'), 400);
+      setTimeout(() => enforceEmbeddedFrameFocusGuard('generation-running'), 1800);
+      setTimeout(() => enforceEmbeddedFrameFocusGuard('generation-finished'), 6000);
+    }
   }
   // ─────────────────────────────────────────────────────────
 
@@ -310,6 +323,11 @@
   let parallelComposerInput = null;
   let isParallelComposerPinned = false;
   let parallelComposerRefocusTimer = null;
+  let parallelComposerLastInteractionAt = 0;
+  let embeddedReportedAssistantCount = null;
+  let isParallelComposerComposing = false;
+  let embeddedFrameFocusGuardUntil = 0;
+  let embeddedFrameInteractionUntil = 0;
   let pendingParallelAnimation = '';
   let activeIndexSyncFrame = null;
   let lastKnownHref = window.location.href;
@@ -1121,6 +1139,7 @@
       addParallelPane(question);
       parallelInput.value = '';
       syncParallelComposer();
+      markParallelComposerInteraction();
       parallelInput.focus();
     };
 
@@ -1128,18 +1147,34 @@
     updateParallelPaneCount();
 
     if (!isEmbeddedFrame) {
-      parallelInput.addEventListener('input', syncParallelComposer);
+      parallelInput.addEventListener('input', () => {
+        markParallelComposerInteraction();
+        syncParallelComposer();
+      });
       parallelInput.addEventListener('focus', () => {
         isParallelComposerPinned = true;
+        markParallelComposerInteraction();
         clearParallelComposerRefocusTimer();
       });
       parallelInput.addEventListener('blur', () => {
         scheduleParallelComposerRefocus();
       });
+      parallelInput.addEventListener('compositionstart', () => {
+        isParallelComposerComposing = true;
+        markParallelComposerInteraction();
+      });
+      parallelInput.addEventListener('compositionupdate', () => {
+        markParallelComposerInteraction();
+      });
+      parallelInput.addEventListener('compositionend', () => {
+        isParallelComposerComposing = false;
+        markParallelComposerInteraction();
+      });
       parallelSendBtn.addEventListener('click', sendParallelQuestion);
 
       // Enter 发送，Shift+Enter 换行
       parallelInput.addEventListener('keydown', (e) => {
+        markParallelComposerInteraction();
         if (e.isComposing || e.keyCode === 229) return;
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
@@ -1165,8 +1200,13 @@
     }
   }
 
+  function markParallelComposerInteraction() {
+    parallelComposerLastInteractionAt = Date.now();
+  }
+
   function stopParallelComposerFocusLock() {
     isParallelComposerPinned = false;
+    isParallelComposerComposing = false;
     clearParallelComposerRefocusTimer();
   }
 
@@ -1175,6 +1215,8 @@
     if (document.visibilityState !== 'visible') return false;
     if (document.activeElement === parallelComposerInput) return false;
     if (parallelComposerArea && parallelComposerArea.contains(document.activeElement)) return false;
+    const idleMs = Date.now() - parallelComposerLastInteractionAt;
+    if (!isParallelComposerComposing && idleMs > 1500) return false;
     return true;
   }
 
@@ -1184,6 +1226,54 @@
       if (!shouldRestoreParallelComposerFocus()) return;
       parallelComposerInput.focus({ preventScroll: true });
     }, delay);
+  }
+
+  function notifyParentToRestoreParallelComposerFocus(reason = 'embedded-frame-focus') {
+    if (!isEmbeddedFrame) return;
+    try {
+      window.top?.postMessage({ type: 'AI_ANCHOR_RESTORE_PARALLEL_FOCUS', reason }, '*');
+    } catch (err) {
+      console.warn('[AI Chat Anchor] 通知父页面恢复焦点失败:', err);
+    }
+  }
+
+  function allowEmbeddedFrameFocus(duration = 6000) {
+    embeddedFrameInteractionUntil = Date.now() + duration;
+  }
+
+  function guardEmbeddedFrameAutofocus(duration = 15000) {
+    embeddedFrameFocusGuardUntil = Date.now() + duration;
+  }
+
+  function isEditableElement(target) {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.matches('textarea, input, select, [contenteditable="true"], [role="textbox"]')) return true;
+    return !!target.closest('textarea, input, select, [contenteditable="true"], [role="textbox"]');
+  }
+
+  function shouldBlockEmbeddedFrameFocus(target = document.activeElement) {
+    if (!isEmbeddedFrame) return false;
+    if (Date.now() > embeddedFrameFocusGuardUntil) return false;
+    if (Date.now() < embeddedFrameInteractionUntil) return false;
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.closest('#ai-chat-anchor-panel, #ai-chat-anchor-timeline, #ai-chat-anchor-parallel-workspace')) return false;
+    return isEditableElement(target);
+  }
+
+  function blurEmbeddedFrameActiveElement() {
+    const activeEl = document.activeElement;
+    if (!(activeEl instanceof HTMLElement)) return false;
+    activeEl.blur();
+    return true;
+  }
+
+  function enforceEmbeddedFrameFocusGuard(reason = 'embedded-frame-focus') {
+    if (!shouldBlockEmbeddedFrameFocus()) return false;
+    const blurred = blurEmbeddedFrameActiveElement();
+    if (blurred) {
+      notifyParentToRestoreParallelComposerFocus(reason);
+    }
+    return blurred;
   }
 
   function playParallelToggleAnimation(isOpening) {
@@ -1726,6 +1816,17 @@
     updateParallelPaneCount();
   }
 
+  function clearParallelPaneUnread(pane) {
+    if (!pane) return;
+    delete pane.dataset.hasUnread;
+  }
+
+  function markParallelPaneUnread(pane) {
+    if (!pane) return;
+    if (pane.id && pane.id === activeParallelPaneId) return;
+    pane.dataset.hasUnread = 'true';
+  }
+
   function setActiveParallelPane(pane, { triggerRipple = true } = {}) {
     const panes = getSortedParallelPanes();
     const nextActiveId = pane?.id || '';
@@ -1739,6 +1840,9 @@
     });
 
     activeParallelPaneId = nextActiveId;
+    if (pane) {
+      clearParallelPaneUnread(pane);
+    }
 
     if (pane && triggerRipple) {
       pane.classList.remove('is-rippling');
@@ -1749,7 +1853,11 @@
     if (panelElement && isParallelModeOpen()) {
       const listItems = panelElement.querySelectorAll('.parallel-pane-item');
       listItems.forEach((item) => {
-        item.classList.toggle('is-active', item.dataset.paneId === activeParallelPaneId);
+        const isActive = item.dataset.paneId === activeParallelPaneId;
+        item.classList.toggle('is-active', isActive);
+        if (isActive) {
+          item.classList.remove('has-unread');
+        }
       });
     }
   }
@@ -1872,12 +1980,18 @@
       if (pane.id === activeParallelPaneId) {
         item.classList.add('is-active');
       }
+      if (pane.dataset.hasUnread === 'true') {
+        item.classList.add('has-unread');
+      }
 
       const subtitle = pane.dataset.paneSubtitle || `窗格 ${index + 1}`;
       const tooltip = pane.dataset.paneTooltip || subtitle;
 
       item.innerHTML = `
-        <span class="qa-number">${index + 1}</span>
+        <span class="qa-number">
+          ${index + 1}
+          <span class="parallel-pane-badge" aria-hidden="true"></span>
+        </span>
         <span class="qa-text">${escapeHtml(subtitle)}</span>
         <div class="parallel-pane-actions">
           <button class="parallel-pane-focus" type="button" title="定位到这个窗格" aria-label="定位到这个窗格">
@@ -2104,6 +2218,37 @@
         updateActiveOnScroll();
       });
     }
+
+    if (isEmbeddedFrame) {
+      reportEmbeddedParallelActivity();
+    }
+  }
+
+  function getAssistantReplyCount() {
+    return extractQAPairs().filter((qa) => qa.aiElement).length;
+  }
+
+  function reportEmbeddedParallelActivity() {
+    if (!isEmbeddedFrame) return;
+
+    const assistantReplyCount = getAssistantReplyCount();
+    if (embeddedReportedAssistantCount === null) {
+      embeddedReportedAssistantCount = assistantReplyCount;
+      return;
+    }
+
+    if (assistantReplyCount < embeddedReportedAssistantCount) {
+      embeddedReportedAssistantCount = assistantReplyCount;
+      return;
+    }
+
+    if (assistantReplyCount <= embeddedReportedAssistantCount) return;
+
+    embeddedReportedAssistantCount = assistantReplyCount;
+    window.top?.postMessage({
+      type: 'AI_ANCHOR_PARALLEL_ACTIVITY',
+      assistantReplyCount
+    }, '*');
   }
 
   function nodeContainsObservedMessage(node, observedSelectors) {
@@ -2616,6 +2761,22 @@
             });
           }
         });
+        document.addEventListener('pointerdown', () => {
+          allowEmbeddedFrameFocus();
+        }, true);
+        document.addEventListener('keydown', () => {
+          allowEmbeddedFrameFocus();
+        }, true);
+        document.addEventListener('focusin', () => {
+          setTimeout(() => {
+            enforceEmbeddedFrameFocusGuard('embedded-focusin');
+          }, 0);
+        }, true);
+        window.addEventListener('focus', () => {
+          setTimeout(() => {
+            enforceEmbeddedFrameFocusGuard('embedded-window-focus');
+          }, 0);
+        });
 
         createPanel();
         createToggleButton();
@@ -2671,6 +2832,30 @@
         } else if (isPanelVisible) {
           hidePanel();
         }
+      }
+    });
+
+    window.addEventListener('message', (event) => {
+      if (event.data?.type !== 'AI_ANCHOR_RESTORE_PARALLEL_FOCUS') return;
+      scheduleParallelComposerRefocus(0);
+    });
+
+    window.addEventListener('message', (event) => {
+      if (event.data?.type !== 'AI_ANCHOR_PARALLEL_ACTIVITY') return;
+
+      const sourceWindow = event.source;
+      if (!sourceWindow || !parallelPanesContainer) return;
+
+      const matchingFrame = Array.from(
+        parallelPanesContainer.querySelectorAll('.parallel-pane-frame')
+      ).find((frame) => frame.contentWindow === sourceWindow);
+
+      const pane = matchingFrame?.closest('.ai-chat-anchor-parallel-pane');
+      if (!(pane instanceof HTMLElement)) return;
+
+      markParallelPaneUnread(pane);
+      if (isParallelModeOpen()) {
+        renderParallelPaneList();
       }
     });
 

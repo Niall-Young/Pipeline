@@ -1117,6 +1117,7 @@ body.anchor-parallel-open .ai-chat-anchor-panel.parallel-mode .ai-chat-anchor-li
 }
 
 body.anchor-parallel-open .ai-chat-anchor-panel.parallel-mode .ai-chat-anchor-item.parallel-pane-item {
+  position: relative;
   min-height: 0;
   padding: 10px 12px;
   margin-bottom: 0;
@@ -1137,6 +1138,7 @@ body.anchor-parallel-open .ai-chat-anchor-panel.parallel-mode .ai-chat-anchor-it
 }
 
 body.anchor-parallel-open .ai-chat-anchor-panel.parallel-mode .qa-number {
+  position: relative;
   width: 22px;
   height: 22px;
   border-radius: 8px;
@@ -1162,6 +1164,26 @@ body.anchor-parallel-open .ai-chat-anchor-panel.parallel-mode .parallel-pane-ite
   color: var(--anchor-item-text);
   font-size: 14px;
   line-height: 20px;
+}
+
+body.anchor-parallel-open .ai-chat-anchor-panel.parallel-mode .parallel-pane-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #1890ff;
+  box-shadow: 0 0 0 2px var(--anchor-bg);
+  opacity: 0;
+  transform: scale(0.7);
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+body.anchor-parallel-open .ai-chat-anchor-panel.parallel-mode .parallel-pane-item.has-unread .qa-number .parallel-pane-badge {
+  opacity: 1;
+  transform: scale(1);
 }
 
 body.anchor-parallel-open .ai-chat-anchor-panel.parallel-mode .parallel-pane-item.is-active .qa-text {
