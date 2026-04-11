@@ -2416,6 +2416,7 @@
         '--anchor-pane-placeholder-highlight': 'rgba(245,245,245,0.1)',
         '--anchor-toggle-track': '#3a3a40',
         '--anchor-toggle-thumb': '#ffffff',
+        '--anchor-toggle-thumb-active': '#111113',
         '--anchor-toggle-active': '#f5f5f5',
         '--anchor-workspace-icon': '#c5c5cb',
       };
@@ -2465,6 +2466,7 @@
         '--anchor-pane-placeholder-highlight': 'rgba(24,24,27,0.08)',
         '--anchor-toggle-track': '#d9d9de',
         '--anchor-toggle-thumb': '#ffffff',
+        '--anchor-toggle-thumb-active': '#ffffff',
         '--anchor-toggle-active': '#3a3a3a',
         '--anchor-workspace-icon': '#4b4b4b',
       };
