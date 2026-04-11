@@ -65,7 +65,7 @@ Pipeline/
 
 - 扩展名称：`Pipeline`
 - Manifest 版本：`3`
-- 扩展版本：`1.4.0`
+- 扩展版本：`1.5.0`
 - 描述：`在 AI 聊天平台右侧显示对话目录锚点，并支持并行多窗口提问`
 
 以上信息来自 [ai-chat-anchor/manifest.json](/Users/niallyoung/Desktop/Pipeline/ai-chat-anchor/manifest.json)。
