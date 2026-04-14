@@ -479,6 +479,13 @@
     ].includes(normalized);
   }
 
+  function isSourceAttributionElement(el) {
+    if (!el) return false;
+
+    const text = normalizeMessageText(el.textContent || '');
+    return /^(来源|参考来源|资料来源|引用|引文|sources?|references?|citations?)$/i.test(text);
+  }
+
   function cleanElementText(el, excludeSelectors = []) {
     if (!el) return '';
     const clone = el.cloneNode(true);
@@ -570,6 +577,7 @@
     if (!isElementVisible(el) || isAnchorElement(el)) return false;
     if (el.closest('nav, aside, form, footer, header, button, [role="button"]')) return false;
     if (['BUTTON', 'INPUT', 'TEXTAREA', 'SVG', 'PATH'].includes(el.tagName)) return false;
+    if (isSourceAttributionElement(el)) return false;
     return getMessageText(el).length >= 2;
   }
 
@@ -995,11 +1003,14 @@
     }
 
     const directMessages = collectMessagesBySelectors();
-    const heuristicMessages = collectMessagesWithHeuristics();
     const directPairs = buildQAPairs(directMessages);
-    const heuristicPairs = buildQAPairs(heuristicMessages);
+    if (directPairs.length > 0) {
+      return directPairs;
+    }
 
-    return heuristicPairs.length > directPairs.length ? heuristicPairs : directPairs;
+    const heuristicMessages = collectMessagesWithHeuristics();
+    const heuristicPairs = buildQAPairs(heuristicMessages);
+    return heuristicPairs;
   }
 
   // 创建侧边面板
@@ -2586,18 +2597,18 @@
     }
 
     if (isEmbeddedFrame) {
-      reportEmbeddedParallelActivity();
+      reportEmbeddedParallelActivity(qaPairs);
     }
   }
 
-  function getAssistantReplyCount() {
-    return extractQAPairs().filter((qa) => qa.aiElement).length;
+  function getAssistantReplyCount(pairs = qaPairs) {
+    return pairs.filter((qa) => qa.aiElement).length;
   }
 
-  function reportEmbeddedParallelActivity() {
+  function reportEmbeddedParallelActivity(pairs = qaPairs) {
     if (!isEmbeddedFrame) return;
 
-    const assistantReplyCount = getAssistantReplyCount();
+    const assistantReplyCount = getAssistantReplyCount(pairs);
     if (embeddedReportedAssistantCount === null) {
       embeddedReportedAssistantCount = assistantReplyCount;
       return;

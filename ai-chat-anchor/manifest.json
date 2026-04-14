@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pipeline",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "在 AI 聊天平台右侧显示对话目录锚点，并支持并行多窗口提问",
   "permissions": [
     "activeTab",
