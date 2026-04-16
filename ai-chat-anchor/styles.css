@@ -727,6 +727,59 @@ body.anchor-embedded-frame .ai-chat-anchor-footer {
   justify-content: flex-start;
 }
 
+html.anchor-embedded-frame,
+body.anchor-embedded-frame {
+  min-width: 0 !important;
+  width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+html.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"],
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] {
+  --sidebar-width: 0px !important;
+  --collapsed-sidebar-width: 0px !important;
+  --composer-sidebar-width: 0px !important;
+}
+
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] nav,
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] aside,
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [role="navigation"],
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [data-sidebar],
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [class*="sidebar" i],
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [data-testid*="sidebar" i],
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [aria-label*="sidebar" i],
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [aria-label*="history" i],
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] .ai-chat-anchor-embedded-hidden-chrome {
+  display: none !important;
+}
+
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] main,
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [role="main"],
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] #__next,
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [class*="__next"],
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [class*="layout" i] {
+  width: 100% !important;
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  transform: none !important;
+}
+
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] main {
+  padding-left: 0 !important;
+  left: 0 !important;
+}
+
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [class*="md:pl-"],
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [class*="lg:pl-"],
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [class*="xl:pl-"],
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [class*="ml-"],
+body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [class*="translate-x-"] {
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+  transform: none !important;
+}
+
 /* 当前页内并行工作区 */
 .ai-chat-anchor-parallel-workspace {
   position: fixed;

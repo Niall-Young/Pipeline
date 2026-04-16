@@ -344,6 +344,8 @@
   let isParallelComposerComposing = false;
   let embeddedFrameFocusGuardUntil = 0;
   let embeddedFrameInteractionUntil = 0;
+  let embeddedLayoutObserver = null;
+  let embeddedLayoutFixTimer = null;
   let pendingParallelAnimation = '';
   let activeIndexSyncFrame = null;
   let lastKnownHref = window.location.href;
@@ -1989,6 +1991,16 @@
     iframe.title = `${title} 窗格 ${seq}`;
     iframe.setAttribute('allow', 'clipboard-read; clipboard-write');
 
+    iframe.addEventListener('load', () => {
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.postMessage({ type: 'AI_ANCHOR_COMPACT_EMBEDDED_FRAME' }, '*');
+        } catch (err) {
+          console.warn(`[AI Chat Anchor] 并行窗格 ${seq} 布局修正失败:`, err);
+        }
+      }, 500);
+    });
+
     if (injectQuestion) {
       iframe.addEventListener('load', () => {
         setTimeout(() => {
@@ -3099,6 +3111,14 @@
 
   function applyPlatformIdentity() {
     const platformName = currentPlatform?.name || '';
+    [document.documentElement, document.body].filter(Boolean).forEach((el) => {
+      if (platformName) {
+        el.dataset.aiChatAnchorPlatform = platformName;
+      } else {
+        delete el.dataset.aiChatAnchorPlatform;
+      }
+    });
+
     [panelElement, toggleButton, parallelWorkspaceElement, parallelHistoryPanel].filter(Boolean).forEach((el) => {
       if (!el) return;
       if (platformName) {
@@ -3106,6 +3126,77 @@
       } else {
         delete el.dataset.anchorPlatform;
       }
+    });
+  }
+
+  function isAnchorOwnedElement(el) {
+    return !!el?.closest?.(
+      '#ai-chat-anchor-panel, #ai-chat-anchor-timeline, #ai-chat-anchor-parallel-workspace, .parallel-history-dialog'
+    );
+  }
+
+  function applyEmbeddedChatGPTLayoutFix() {
+    if (!isEmbeddedFrame || currentPlatform?.name !== 'chatgpt' || !document.body) return;
+
+    document.documentElement.style.setProperty('--sidebar-width', '0px');
+    document.documentElement.style.setProperty('--collapsed-sidebar-width', '0px');
+    document.documentElement.style.setProperty('--composer-sidebar-width', '0px');
+    document.body.style.setProperty('--sidebar-width', '0px');
+    document.body.style.setProperty('--collapsed-sidebar-width', '0px');
+    document.body.style.setProperty('--composer-sidebar-width', '0px');
+
+    const candidates = new Set(document.body.querySelectorAll('nav, aside, [role="navigation"], [data-sidebar], [class*="sidebar" i], [aria-label*="sidebar" i], [aria-label*="history" i], body > div > div, body > div > div > div'));
+    [48, Math.round(window.innerHeight * 0.35), Math.round(window.innerHeight * 0.65), window.innerHeight - 48].forEach((y) => {
+      document.elementsFromPoint(24, y).forEach((el) => {
+        let candidate = el;
+        while (candidate instanceof HTMLElement && candidate !== document.body) {
+          candidates.add(candidate);
+          candidate = candidate.parentElement;
+        }
+      });
+    });
+
+    candidates.forEach((el) => {
+      if (!(el instanceof HTMLElement) || isAnchorOwnedElement(el)) return;
+      if (el.matches('main, [role="main"], form') || el.querySelector('main, [role="main"], #prompt-textarea, [contenteditable="true"]')) return;
+
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 36 || rect.width > Math.min(420, window.innerWidth * 0.5)) return;
+      if (rect.height < window.innerHeight * 0.45) return;
+      if (rect.left > 12 || rect.top > 90) return;
+
+      const style = getComputedStyle(el);
+      const interactiveCount = el.querySelectorAll('a[href], button, [role="button"]').length;
+      const navLike = el.matches('nav, aside, [role="navigation"], [data-sidebar], [class*="sidebar" i], [aria-label*="sidebar" i], [aria-label*="history" i]');
+      const fixedLike = style.position === 'fixed' || style.position === 'sticky' || rect.height > window.innerHeight * 0.8;
+      if (navLike || (fixedLike && interactiveCount >= 2)) {
+        el.classList.add('ai-chat-anchor-embedded-hidden-chrome');
+      }
+    });
+  }
+
+  function scheduleEmbeddedChatGPTLayoutFix() {
+    if (!isEmbeddedFrame || currentPlatform?.name !== 'chatgpt') return;
+    clearTimeout(embeddedLayoutFixTimer);
+    embeddedLayoutFixTimer = setTimeout(() => {
+      applyEmbeddedChatGPTLayoutFix();
+    }, 80);
+  }
+
+  function setupEmbeddedFrameLayoutFix() {
+    if (!isEmbeddedFrame || currentPlatform?.name !== 'chatgpt' || embeddedLayoutObserver) return;
+
+    applyEmbeddedChatGPTLayoutFix();
+    [100, 500, 1200, 2500].forEach((delay) => {
+      setTimeout(applyEmbeddedChatGPTLayoutFix, delay);
+    });
+
+    embeddedLayoutObserver = new MutationObserver(scheduleEmbeddedChatGPTLayoutFix);
+    embeddedLayoutObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'hidden', 'aria-expanded']
     });
   }
 
@@ -3131,12 +3222,17 @@
     // 如果在 iframe 中运行（并行模式嵌入），只注册 postMessage 注入监听，不创建面板 UI
     if (isEmbeddedFrame) {
       if (currentPlatform) {
+        document.documentElement.classList.add('anchor-embedded-frame');
         document.body.classList.add('anchor-embedded-frame');
         window.addEventListener('message', (event) => {
           if (event.data && event.data.type === 'AI_ANCHOR_INJECT') {
+            applyEmbeddedChatGPTLayoutFix();
             injectQuestion(event.data.question).catch(err => {
               console.warn('[AI Chat Anchor] iframe 注入失败:', err);
             });
+          }
+          if (event.data && event.data.type === 'AI_ANCHOR_COMPACT_EMBEDDED_FRAME') {
+            applyEmbeddedChatGPTLayoutFix();
           }
         });
         document.addEventListener('pointerdown', () => {
@@ -3159,6 +3255,7 @@
         createPanel();
         createToggleButton();
         applyPlatformIdentity();
+        setupEmbeddedFrameLayoutFix();
         applyTheme();
         setupThemeObserver();
         setupObserver();
