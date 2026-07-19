@@ -4,12 +4,14 @@
   "description": "在 AI 聊天平台中开启并行对话工作区",
   "main": "background.js",
   "scripts": {
+    "build": "node scripts/package-extension.js",
     "generate-icons": "node scripts/generate-icons.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node scripts/validate-extension.js"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "private": true,
   "type": "commonjs",
   "dependencies": {
     "canvas": "^3.2.1"

@@ -48,6 +48,19 @@ Pipeline/
 3. 点击“加载已解压的扩展程序”
 4. 选择目录 [ai-chat-anchor](/Users/niallyoung/Desktop/Pipeline/ai-chat-anchor)
 
+## Chrome 应用商店发布包
+
+在扩展目录执行：
+
+```bash
+cd ai-chat-anchor
+npm run build
+```
+
+脚本会先校验 Manifest、权限、版本号和 JavaScript 语法，再在项目根目录的 `dist/` 中生成可上传的 `pipeline-<版本号>.zip`。发布包使用文件白名单，不包含 `node_modules`、开发脚本、Logo 候选稿或浏览器生成的 `_metadata`。
+
+商店文案、权限理由及提交步骤见 [STORE_SUBMISSION.md](/Users/niallyoung/Desktop/Pipeline/STORE_SUBMISSION.md)，隐私政策模板见 [PRIVACY.md](/Users/niallyoung/Desktop/Pipeline/PRIVACY.md)。
+
 ## 开发说明
 
 - 扩展基于 Chrome Extension Manifest V3

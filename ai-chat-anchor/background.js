@@ -9,7 +9,14 @@ const SUPPORTED_DOMAINS = [
 ];
 
 function isSupportedUrl(url = '') {
-  return SUPPORTED_DOMAINS.some((domain) => url.includes(domain));
+  try {
+    const { hostname } = new URL(url);
+    return SUPPORTED_DOMAINS.some(
+      (domain) => hostname === domain || hostname.endsWith(`.${domain}`)
+    );
+  } catch {
+    return false;
+  }
 }
 
 chrome.runtime.onInstalled.addListener((details) => {

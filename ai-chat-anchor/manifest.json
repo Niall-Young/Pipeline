@@ -26,10 +26,6 @@
       "path": "rules.json"
     }]
   },
-  "web_accessible_resources": [{
-    "resources": ["parallel.html", "parallel.js"],
-    "matches": ["<all_urls>"]
-  }],
   "action": {
     "default_title": "开启 Pipeline 并行模式",
     "default_icon": {
