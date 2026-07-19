@@ -1,7 +1,7 @@
 {
   "name": "ai-chat-anchor",
-  "version": "1.5.2",
-  "description": "",
+  "version": "1.6.0",
+  "description": "在 AI 聊天平台中开启并行对话工作区",
   "main": "background.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

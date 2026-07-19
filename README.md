@@ -1,17 +1,16 @@
 # Pipeline
 
-`Pipeline` 是一个面向 AI 聊天场景的 Chrome 扩展。它会在聊天页面生成对话导航目录，并提供并行提问能力，方便在多个 AI 会话之间快速切换、定位和对比回答。
+`Pipeline` 是一个面向 AI 聊天场景的 Chrome 扩展。点击浏览器工具栏中的插件图标，即可在当前页面开启并行对话工作区。
 
 ## 功能特性
 
-- 自动识别当前 AI 平台并注入页面能力
-- 提取当前会话中的问答轮次，生成右侧导航目录
-- 点击目录项后平滑跳转到对应消息位置
-- 监听页面内容变化，新增消息后自动刷新目录
-- 提供弹窗控制面板，可直接开启或关闭并行模式
+- 自动识别当前 AI 平台并注入并行能力
+- 点击浏览器插件栏图标直接开启并行模式
+- 开启后直接显示当前对话和一个新的空白对话窗格
+- 再次点击插件图标可继续增加空白对话窗格
 - 支持在当前页面内新建并排对话
-- 支持从后台为多个新会话批量注入问题
-- 使用 `tabGroups` 对新建并行标签页进行分组
+- 支持向新建对话自动注入问题
+- 支持调整、聚焦和关闭并行窗格
 
 ## 支持平台
 
@@ -31,8 +30,6 @@ Pipeline/
     ├── manifest.json
     ├── background.js
     ├── content.js
-    ├── popup.html
-    ├── popup.js
     ├── parallel.html
     ├── parallel.js
     ├── styles.css
@@ -55,8 +52,7 @@ Pipeline/
 - 扩展基于 Chrome Extension Manifest V3
 - 主要页面注入逻辑位于 [ai-chat-anchor/content.js](/Users/niallyoung/Desktop/Pipeline/ai-chat-anchor/content.js)
 - 后台逻辑位于 [ai-chat-anchor/background.js](/Users/niallyoung/Desktop/Pipeline/ai-chat-anchor/background.js)
-- 弹窗交互逻辑位于 [ai-chat-anchor/popup.js](/Users/niallyoung/Desktop/Pipeline/ai-chat-anchor/popup.js)
-- 并行工作区逻辑位于 [ai-chat-anchor/parallel.js](/Users/niallyoung/Desktop/Pipeline/ai-chat-anchor/parallel.js)
+- 当前页面内的并行工作区逻辑位于 [ai-chat-anchor/content.js](/Users/niallyoung/Desktop/Pipeline/ai-chat-anchor/content.js)
 - 样式定义位于 [ai-chat-anchor/styles.css](/Users/niallyoung/Desktop/Pipeline/ai-chat-anchor/styles.css)
 
 如果修改了扩展代码，回到扩展管理页点击“刷新”即可重新加载最新版本。
@@ -65,8 +61,8 @@ Pipeline/
 
 - 扩展名称：`Pipeline`
 - Manifest 版本：`3`
-- 扩展版本：`1.5.2`
-- 描述：`在 AI 聊天平台右侧显示对话目录锚点，并支持并行多窗口提问`
+- 扩展版本：`1.6.0`
+- 描述：`在 AI 聊天平台中开启并行对话工作区`
 
 以上信息来自 [ai-chat-anchor/manifest.json](/Users/niallyoung/Desktop/Pipeline/ai-chat-anchor/manifest.json)。
 

@@ -813,8 +813,12 @@ body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [class*="tran
 .parallel-workspace-stage {
   flex: 1;
   min-width: 0;
-  padding: 88px 360px 20px 20px;
+  padding: 88px 20px 20px;
   overflow: hidden;
+}
+
+body.anchor-parallel-open .ai-chat-anchor-panel {
+  display: none !important;
 }
 
 .parallel-workspace-close {

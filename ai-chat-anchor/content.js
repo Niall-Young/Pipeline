@@ -1,5 +1,5 @@
-// AI Chat Anchor - Content Script
-// 功能：提取单个对话中每一轮 QA，显示在右侧作为导航目录
+// Pipeline - Content Script
+// 功能：在支持的 AI 聊天平台中提供并行对话工作区
 
 (function() {
   'use strict';
@@ -203,12 +203,10 @@
       if (question) {
         addParallelPane(question);
       } else {
-        updateParallelPaneCount();
+        addBlankParallelPane();
       }
 
-      setTimeout(() => {
-        panelElement?.querySelector('#parallel-input')?.focus({ preventScroll: true });
-      }, 50);
+      updateParallelPaneCount();
 
       sendResponse({ success: true, enabled: isParallelModeOpen() });
       return false;
@@ -1026,15 +1024,6 @@
       panelElement.classList.add('embedded-frame');
     }
 
-    // 搜索框
-    const searchContainer = document.createElement('div');
-    searchContainer.className = 'ai-chat-anchor-search';
-    searchContainer.innerHTML = `
-      <input type="text" placeholder="搜索对话消息" id="ai-chat-anchor-input">
-      <span class="search-icon search-icon-static">${getLucideIcon('search')}</span>
-      <button class="search-clear" title="清除">${getLucideIcon('x')}</button>
-    `;
-
     const list = document.createElement('div');
     list.className = 'ai-chat-anchor-list';
     list.id = 'ai-chat-anchor-list';
@@ -1055,10 +1044,6 @@
     parallelArea.innerHTML = `
       <div class="parallel-area-header">
         <span class="parallel-area-title">新建对话</span>
-        <button class="parallel-history-toggle" id="parallel-history-toggle" type="button" title="搜索历史对话" aria-expanded="false">
-          ${getLucideIcon('history')}
-          <span>历史对话</span>
-        </button>
       </div>
       <textarea class="parallel-area-input" id="parallel-input" placeholder="问你想问的问题" rows="4"></textarea>
       <div class="parallel-area-mode-row">
@@ -1082,7 +1067,6 @@
       </button>
     `;
 
-    panelElement.appendChild(searchContainer);
     panelElement.appendChild(parallelSheetHeader);
     panelElement.appendChild(list);
     panelElement.appendChild(parallelArea);
@@ -1134,25 +1118,6 @@
           hidePanel();
         }
       }, 0);
-    });
-
-    // 绑定搜索事件
-    searchInput = searchContainer.querySelector('#ai-chat-anchor-input');
-    const clearBtn = searchContainer.querySelector('.search-clear');
-
-    searchInput.addEventListener('input', debounce((e) => {
-      const hasValue = e.target.value.length > 0;
-      filterList(e.target.value);
-      clearBtn.classList.toggle('visible', hasValue);
-      searchContainer.classList.toggle('has-value', hasValue);
-    }, 150));
-
-    clearBtn.addEventListener('click', () => {
-      searchInput.value = '';
-      filterList('');
-      clearBtn.classList.remove('visible');
-      searchContainer.classList.remove('has-value');
-      searchInput.focus();
     });
 
     // 并行模式 toggle
@@ -1376,63 +1341,6 @@
     });
   }
 
-  // 创建刻度尺风格导航
-  function createToggleButton() {
-    if (toggleButton) return;
-
-    // 创建刻度条容器
-    toggleButton = document.createElement('div');
-    toggleButton.id = 'ai-chat-anchor-timeline';
-    toggleButton.className = 'ai-chat-anchor-timeline';
-    toggleButton.title = '问答目录';
-    toggleButton.tabIndex = 0;
-    toggleButton.setAttribute('role', 'button');
-    toggleButton.setAttribute('aria-label', '打开问答目录');
-
-    // 竖线背景
-    const track = document.createElement('div');
-    track.className = 'ai-chat-anchor-timeline-track';
-    toggleButton.appendChild(track);
-
-    document.body.appendChild(toggleButton);
-
-    toggleButton.addEventListener('mouseenter', () => {
-      isHoveringTimeline = true;
-      clearHidePanelTimer();
-      showPanel();
-    });
-
-    toggleButton.addEventListener('mouseleave', (e) => {
-      isHoveringTimeline = false;
-      if (panelElement && panelElement.contains(e.relatedTarget)) return;
-      scheduleHidePanel();
-    });
-
-    toggleButton.addEventListener('focus', () => {
-      clearHidePanelTimer();
-      showPanel();
-    });
-
-    toggleButton.addEventListener('blur', () => {
-      scheduleHidePanel();
-    });
-
-    // 点击刻度条也可展开面板，兼容非悬停操作
-    toggleButton.addEventListener('click', (e) => {
-      e.stopPropagation();
-      showPanel();
-    });
-
-    toggleButton.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        showPanel();
-      } else if (e.key === 'Escape') {
-        hidePanel();
-      }
-    });
-  }
-
   function ensureParallelWorkspace() {
     if (parallelWorkspaceElement) return;
 
@@ -1442,9 +1350,6 @@
     parallelWorkspaceElement.innerHTML = `
       <div class="parallel-workspace-shell">
         <button class="parallel-workspace-close" title="关闭并行区">${getLucideIcon('x')}</button>
-        <button class="parallel-panel-toggle parallel-panel-toggle-floating" id="parallel-floating-panel-toggle" title="收起右侧面板" aria-label="收起右侧面板">
-          ${getLucideIcon('chevronsRight')}
-        </button>
         <div class="parallel-workspace-stage">
           <div class="parallel-workspace-panes" id="ai-chat-anchor-parallel-panes">
             <div class="parallel-workspace-empty" id="ai-chat-anchor-parallel-empty">
@@ -1464,12 +1369,6 @@
     parallelWorkspaceElement
       .querySelector('.parallel-workspace-close')
       .addEventListener('click', closeParallelWorkspace);
-
-    parallelWorkspaceElement
-      .querySelector('#parallel-floating-panel-toggle')
-      .addEventListener('click', () => {
-        setParallelPanelCollapsed(!isParallelPanelCollapsed);
-      });
 
     parallelWorkspaceElement.addEventListener('click', (e) => {
       if (e.target === parallelWorkspaceElement) {
@@ -1528,17 +1427,15 @@
       });
       renderParallelPaneList();
     } else {
-      panelElement.classList.remove('parallel-mode');
-      if (searchEl) searchEl.style.display = '';
+      panelElement.classList.remove('parallel-mode', 'visible');
+      isPanelVisible = false;
+      if (searchEl) searchEl.style.display = 'none';
       if (parallelEl) parallelEl.classList.remove('visible');
       toggleButtons.forEach((toggleBtn) => {
         toggleBtn.classList.remove('active');
         toggleBtn.setAttribute('aria-pressed', 'false');
       });
-      refreshList(searchInput ? searchInput.value : '');
-      if (isPanelVisible) {
-        positionPanel();
-      }
+      if (listEl) listEl.innerHTML = '';
     }
 
     document.body.classList.toggle('anchor-parallel-panel-collapsed', isParallelPanelCollapsed && isParallelModeOpen());
@@ -1563,7 +1460,6 @@
     if (!wasOpen) pendingParallelAnimation = 'opening';
     applyTheme();
     syncPanelMode();
-    refreshParallelHistoryItems();
     updateParallelPaneCount();
   }
 
@@ -1587,11 +1483,6 @@
     closeParallelHistoryPanel();
     if (parallelEmptyState) parallelEmptyState.style.display = '';
     syncPanelMode();
-    if (isPanelVisible) {
-      requestAnimationFrame(() => {
-        positionPanel();
-      });
-    }
     updateParallelPaneCount();
   }
 
@@ -2464,6 +2355,26 @@
     updateParallelPaneCount();
   }
 
+  function addBlankParallelPane() {
+    if (!currentPlatform?.launchUrl) return;
+
+    openParallelWorkspace();
+    ensureSourceParallelPane();
+
+    if (parallelEmptyState) {
+      parallelEmptyState.style.display = 'none';
+    }
+
+    const platformLabel = currentPlatform.displayName || currentPlatform.name;
+    createParallelPane({
+      title: `${platformLabel} · 新对话`,
+      subtitle: '空白对话',
+      src: currentPlatform.launchUrl,
+      kind: 'parallel'
+    });
+    updateParallelPaneCount();
+  }
+
   // 更新刻度点
   function updateTimeline() {
     if (!toggleButton) return;
@@ -2578,6 +2489,12 @@
 
   // 刷新目录列表
   function refreshList(filterText = '') {
+    if (isEmbeddedFrame) {
+      qaPairs = extractQAPairs();
+      reportEmbeddedParallelActivity(qaPairs);
+      return;
+    }
+
     if (!panelElement) return;
 
     if (isParallelModeOpen()) {
@@ -2608,9 +2525,6 @@
       });
     }
 
-    if (isEmbeddedFrame) {
-      reportEmbeddedParallelActivity(qaPairs);
-    }
   }
 
   function getAssistantReplyCount(pairs = qaPairs) {
@@ -3252,14 +3166,11 @@
           }, 0);
         });
 
-        createPanel();
-        createToggleButton();
         applyPlatformIdentity();
         setupEmbeddedFrameLayoutFix();
         applyTheme();
         setupThemeObserver();
         setupObserver();
-        setupNavigationObserver();
         setTimeout(() => { refreshList(); applyTheme(); }, 2000);
       }
       return;
@@ -3274,24 +3185,12 @@
 
     console.log('[AI Chat Anchor] 检测到平台:', currentPlatform.name);
 
-    // 立即创建 UI
-    createPanel();
-    createToggleButton();
+    // 不创建侧栏；点击插件图标后直接展示并行窗格。
     applyPlatformIdentity();
 
     // 应用主题
     applyTheme();
     setupThemeObserver();
-
-    // 点击面板外部关闭
-    document.addEventListener('click', (e) => {
-      if (isParallelModeOpen()) return;
-      if (isPanelVisible && panelElement &&
-          !panelElement.contains(e.target) &&
-          toggleButton && !toggleButton.contains(e.target)) {
-        hidePanel();
-      }
-    }, true);
 
     document.addEventListener('pointerdown', (e) => {
       if (!isParallelComposerPinned) return;
@@ -3304,8 +3203,6 @@
         stopParallelComposerFocusLock();
         if (parallelWorkspaceElement?.classList.contains('visible')) {
           closeParallelWorkspace();
-        } else if (isPanelVisible) {
-          hidePanel();
         }
       }
     });
@@ -3334,15 +3231,7 @@
       }
     });
 
-    window.addEventListener('resize', () => {
-      if (isPanelVisible) positionPanel();
-    }, { passive: true });
-
-    setupObserver();
-    setupNavigationObserver();
-
-    // 延迟扫描 QA 对，等待页面加载
-    setTimeout(() => { refreshList(); applyTheme(); }, 2000);
+    // 顶层页面不再扫描消息或创建目录；工具栏图标是唯一入口。
   }
 
   if (document.readyState === 'loading') {

@@ -1,13 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Pipeline",
-  "version": "1.5.2",
-  "description": "在 AI 聊天平台右侧显示对话目录锚点，并支持并行多窗口提问",
+  "version": "1.6.0",
+  "description": "在 AI 聊天平台中开启并行对话工作区",
   "permissions": [
     "activeTab",
-    "storage",
-    "tabs",
-    "tabGroups",
     "declarativeNetRequest"
   ],
   "host_permissions": [
@@ -34,7 +31,7 @@
     "matches": ["<all_urls>"]
   }],
   "action": {
-    "default_popup": "popup.html",
+    "default_title": "开启 Pipeline 并行模式",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
