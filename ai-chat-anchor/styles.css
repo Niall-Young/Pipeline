@@ -813,12 +813,56 @@ body.anchor-embedded-frame[data-ai-chat-anchor-platform="chatgpt"] [class*="tran
 .parallel-workspace-stage {
   flex: 1;
   min-width: 0;
-  padding: 88px 20px 20px;
+  padding: 88px 360px 20px 20px;
   overflow: hidden;
 }
 
-body.anchor-parallel-open .ai-chat-anchor-panel {
-  display: none !important;
+.parallel-workspace-top-actions {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.parallel-workspace-action {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--anchor-floating-bg);
+  color: var(--anchor-floating-text);
+  box-shadow: 0 2px 20px var(--anchor-panel-shadow-soft);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.parallel-workspace-action:hover,
+.parallel-workspace-action.active {
+  color: var(--anchor-floating-text-strong);
+  background: var(--anchor-floating-bg);
+  transform: translateY(-1px);
+}
+
+.parallel-workspace-action svg {
+  width: 18px;
+  height: 18px;
+}
+
+body.anchor-parallel-open .ai-chat-anchor-panel.parallel-window-list-panel {
+  top: 72px;
+  right: 20px;
+  height: calc(100vh - 92px);
+}
+
+body.anchor-parallel-open .ai-chat-anchor-panel.parallel-window-list-panel .ai-chat-anchor-list {
+  border-bottom: none;
 }
 
 .parallel-workspace-close {

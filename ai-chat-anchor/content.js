@@ -326,7 +326,7 @@
   let parallelPaneSeq = 0;
   let activeParallelPaneId = '';
   let parallelDragState = null;
-  let isParallelPanelCollapsed = false;
+  let isParallelPanelCollapsed = true;
   let parallelComposerArea = null;
   let parallelComposerInput = null;
   let parallelHistoryToggle = null;
@@ -983,6 +983,8 @@
       chevronsLeft: `<svg ${attrs}><path d="m11 17-5-5 5-5"></path><path d="m18 17-5-5 5-5"></path></svg>`,
       chevronsRight: `<svg ${attrs}><path d="m6 17 5-5-5-5"></path><path d="m13 17 5-5-5-5"></path></svg>`,
       panels: `<svg ${attrs}><rect x="3" y="4" width="7" height="16" rx="1.5"></rect><rect x="14" y="4" width="7" height="16" rx="1.5"></rect></svg>`,
+      plus: `<svg ${attrs}><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>`,
+      list: `<svg ${attrs}><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>`,
       grip: `<svg ${attrs}><path d="M9 6h.01"></path><path d="M15 6h.01"></path><path d="M9 12h.01"></path><path d="M15 12h.01"></path><path d="M9 18h.01"></path><path d="M15 18h.01"></path></svg>`,
       target: `<svg ${attrs}><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="1.5"></circle><path d="M12 5V3"></path><path d="M12 21v-2"></path><path d="M19 12h2"></path><path d="M3 12h2"></path></svg>`,
       trash: `<svg ${attrs}><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>`
@@ -1341,6 +1343,23 @@
     });
   }
 
+  function ensureParallelWindowListPanel() {
+    if (panelElement) return;
+
+    panelElement = document.createElement('div');
+    panelElement.id = 'ai-chat-anchor-panel';
+    panelElement.className = 'ai-chat-anchor-panel parallel-mode parallel-window-list-panel';
+    panelElement.innerHTML = `
+      <div class="parallel-sheet-header">
+        <span class="parallel-sheet-title">窗口列表</span>
+      </div>
+      <div class="ai-chat-anchor-list" id="ai-chat-anchor-list"></div>
+    `;
+    document.body.appendChild(panelElement);
+    applyPlatformIdentity();
+    applyTheme();
+  }
+
   function ensureParallelWorkspace() {
     if (parallelWorkspaceElement) return;
 
@@ -1350,6 +1369,14 @@
     parallelWorkspaceElement.innerHTML = `
       <div class="parallel-workspace-shell">
         <button class="parallel-workspace-close" title="关闭并行区">${getLucideIcon('x')}</button>
+        <div class="parallel-workspace-top-actions" aria-label="并行窗口操作">
+          <button class="parallel-workspace-action parallel-workspace-add" type="button" title="新建窗口" aria-label="新建窗口">
+            ${getLucideIcon('plus')}
+          </button>
+          <button class="parallel-workspace-action parallel-window-list-toggle" type="button" title="展开窗口列表" aria-label="展开窗口列表" aria-pressed="false">
+            ${getLucideIcon('list')}
+          </button>
+        </div>
         <div class="parallel-workspace-stage">
           <div class="parallel-workspace-panes" id="ai-chat-anchor-parallel-panes">
             <div class="parallel-workspace-empty" id="ai-chat-anchor-parallel-empty">
@@ -1362,6 +1389,7 @@
     `;
 
     document.body.appendChild(parallelWorkspaceElement);
+    ensureParallelWindowListPanel();
     parallelPanesContainer = parallelWorkspaceElement.querySelector('#ai-chat-anchor-parallel-panes');
     parallelEmptyState = parallelWorkspaceElement.querySelector('#ai-chat-anchor-parallel-empty');
     applyPlatformIdentity();
@@ -1369,6 +1397,16 @@
     parallelWorkspaceElement
       .querySelector('.parallel-workspace-close')
       .addEventListener('click', closeParallelWorkspace);
+
+    parallelWorkspaceElement
+      .querySelector('.parallel-workspace-add')
+      .addEventListener('click', addBlankParallelPane);
+
+    parallelWorkspaceElement
+      .querySelector('.parallel-window-list-toggle')
+      .addEventListener('click', () => {
+        setParallelPanelCollapsed(!isParallelPanelCollapsed);
+      });
 
     parallelWorkspaceElement.addEventListener('click', (e) => {
       if (e.target === parallelWorkspaceElement) {
@@ -1383,12 +1421,13 @@
 
   function syncParallelPanelToggle() {
     const collapsed = !!isParallelPanelCollapsed && isParallelModeOpen();
-    const toggles = document.querySelectorAll('.parallel-panel-toggle');
+    const toggles = document.querySelectorAll('.parallel-window-list-toggle');
     toggles.forEach((toggle) => {
-      toggle.innerHTML = collapsed ? getLucideIcon('chevronsLeft') : getLucideIcon('chevronsRight');
-      toggle.title = collapsed ? '展开右侧面板' : '收起右侧面板';
-      toggle.setAttribute('aria-label', collapsed ? '展开右侧面板' : '收起右侧面板');
-      toggle.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+      toggle.innerHTML = getLucideIcon('list');
+      toggle.title = collapsed ? '展开窗口列表' : '折叠窗口列表';
+      toggle.setAttribute('aria-label', collapsed ? '展开窗口列表' : '折叠窗口列表');
+      toggle.setAttribute('aria-pressed', String(!collapsed));
+      toggle.classList.toggle('active', !collapsed);
     });
   }
 
@@ -1479,7 +1518,7 @@
     if (wasOpen) pendingParallelAnimation = 'closing';
     parallelPaneSeq = 0;
     activeParallelPaneId = '';
-    isParallelPanelCollapsed = false;
+    isParallelPanelCollapsed = true;
     closeParallelHistoryPanel();
     if (parallelEmptyState) parallelEmptyState.style.display = '';
     syncPanelMode();

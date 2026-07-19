@@ -1,6 +1,6 @@
 {
   "name": "ai-chat-anchor",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "在 AI 聊天平台中开启并行对话工作区",
   "main": "background.js",
   "scripts": {
